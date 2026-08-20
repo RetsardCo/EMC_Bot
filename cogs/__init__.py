@@ -1,0 +1,1 @@
+# EM Bot cogs package
