@@ -5,149 +5,71 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-STUDENT_ROLE_NAME = os.getenv("STUDENT_ROLE_NAME", "Student")
-FACULTY_ROLE_NAME = os.getenv("FACULTY_ROLE_NAME", "Faculty")
-
-INTRO_CHANNEL_ID = int(os.getenv("INTRO_CHANNEL_ID", "0"))
-LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", "0"))
+from .common import (
+    FACULTY_ROLE_NAME,
+    INTRO_COMPLETE_CHANNEL_ID,
+    INTRODUCED_ROLE_NAME,
+    STUDENT_ROLE_NAME,
+    UNINTRODUCED_ROLE_NAME,
+    add_role_if_missing,
+    has_role,
+    remove_role_if_present,
+)
 
 MAX_NICKNAME_LENGTH = 32
+INTRO_CHANNEL_ID = int(os.getenv("INTRO_CHANNEL_ID", "0"))
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
-
-def has_role(member: discord.Member, role_name: str) -> bool:
-    return any(role.name.casefold() == role_name.casefold() for role in member.roles)
-
-
-def get_member_status(member: discord.Member) -> Optional[str]:
-    # Faculty takes precedence if a member somehow has both roles.
-    if has_role(member, FACULTY_ROLE_NAME):
-        return "faculty"
-    if has_role(member, STUDENT_ROLE_NAME):
-        return "student"
-    return None
-
-
-def normalize_name(name: str) -> str:
-    """Normalize whitespace and capitalize the first character of the name."""
-    name = " ".join(name.split()).strip()
-
-    if not name:
+def normalize_name(value: str) -> str:
+    value = " ".join(value.split()).strip()
+    if not value:
         return ""
-
-    return name[0].upper() + name[1:]
+    return value[0].upper() + value[1:]
 
 
 def normalize_specialization(value: str) -> Optional[str]:
     value = " ".join(value.split()).strip().casefold()
-
-    aliases = {
+    return {
         "dat": "DAT",
         "digital animation technology": "DAT",
         "gd": "GD",
         "game development": "GD",
-    }
-
-    return aliases.get(value)
+    }.get(value)
 
 
 def normalize_year(value: str) -> Optional[str]:
     value = " ".join(value.split()).strip().casefold()
-
-    aliases = {
-        "1": "1st Year",
-        "1st": "1st Year",
-        "1st year": "1st Year",
-        "first": "1st Year",
-        "first year": "1st Year",
-        "2": "2nd Year",
-        "2nd": "2nd Year",
-        "2nd year": "2nd Year",
-        "second": "2nd Year",
-        "second year": "2nd Year",
-        "3": "3rd Year",
-        "3rd": "3rd Year",
-        "3rd year": "3rd Year",
-        "third": "3rd Year",
-        "third year": "3rd Year",
-        "4": "4th Year",
-        "4th": "4th Year",
-        "4th year": "4th Year",
-        "fourth": "4th Year",
-        "fourth year": "4th Year",
-    }
-
-    return aliases.get(value)
+    return {
+        "1": "1st Year", "1st": "1st Year", "1st year": "1st Year", "first": "1st Year", "first year": "1st Year",
+        "2": "2nd Year", "2nd": "2nd Year", "2nd year": "2nd Year", "second": "2nd Year", "second year": "2nd Year",
+        "3": "3rd Year", "3rd": "3rd Year", "3rd year": "3rd Year", "third": "3rd Year", "third year": "3rd Year",
+        "4": "4th Year", "4th": "4th Year", "4th year": "4th Year", "fourth": "4th Year", "fourth year": "4th Year",
+    }.get(value)
 
 
-def build_nickname(
-    name: str,
-    status: str,
-    specialization: str = "",
-    year: str = "",
-) -> str:
-    clean_name = normalize_name(name)
-
-    if status == "faculty":
-        return f"{clean_name} BSEMC Faculty"
-
-    return f"{clean_name} BSEMC {specialization} {year}"
+def build_student_nickname(name: str, specialization: str, year: str) -> str:
+    return f"{normalize_name(name)} {specialization} {year}"
 
 
-def nickname_too_long_message(nickname: str) -> str:
-    return (
-        f"Your generated nickname is **{len(nickname)} characters**, "
-        f"but Discord allows a maximum of **{MAX_NICKNAME_LENGTH} characters**.\n\n"
-        "Please enter a shorter name so the complete nickname can fit."
-    )
+def build_faculty_nickname(name: str) -> str:
+    return f"{normalize_name(name)} BSEMC Faculty"
 
-
-async def log_change(
-    guild: Optional[discord.Guild],
-    member: discord.Member,
-    nickname: str,
-    status: str,
-) -> None:
-    if guild is None or not LOG_CHANNEL_ID:
-        return
-
-    channel = guild.get_channel(LOG_CHANNEL_ID)
-    if not isinstance(channel, discord.TextChannel):
-        return
-
-    try:
-        await channel.send(
-            f"✏️ **Nickname Updated** | {member.mention} → `{nickname}` ({status})"
-        )
-    except (discord.Forbidden, discord.HTTPException):
-        # Logging should never break a successful nickname update.
-        pass
-
-
-# -----------------------------
-# Student form
-# -----------------------------
 
 class StudentIntroductionModal(discord.ui.Modal, title="Student Introduction"):
     full_name = discord.ui.TextInput(
         label="Full Name",
-        placeholder="Juan Dela Cruz",
+        placeholder="John Doe",
         required=True,
         min_length=2,
         max_length=80,
     )
-
     specialization = discord.ui.TextInput(
         label="Specialization",
         placeholder="DAT or GD",
         required=True,
         min_length=2,
-        max_length=32,
+        max_length=40,
     )
-
     year = discord.ui.TextInput(
         label="Year",
         placeholder="1st Year, 2nd Year, 3rd Year, or 4th Year",
@@ -158,95 +80,69 @@ class StudentIntroductionModal(discord.ui.Modal, title="Student Introduction"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         member = interaction.user
-
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message(
-                "This form can only be used inside the server.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
             return
 
         if not has_role(member, STUDENT_ROLE_NAME):
             await interaction.response.send_message(
-                f"You need the **{STUDENT_ROLE_NAME}** role to use the student form.",
+                f"You need the **{STUDENT_ROLE_NAME}** role first.",
                 ephemeral=True,
             )
             return
 
         specialization = normalize_specialization(self.specialization.value)
-        if specialization is None:
+        year = normalize_year(self.year.value)
+        if not specialization:
+            await interaction.response.send_message("Specialization must be DAT or GD.", ephemeral=True)
+            return
+        if not year:
             await interaction.response.send_message(
-                "Specialization must be **DAT** (Digital Animation Technology) "
-                "or **GD** (Game Development).",
+                "Year must be 1st Year, 2nd Year, 3rd Year, or 4th Year.",
                 ephemeral=True,
             )
             return
 
-        normalized_year = normalize_year(self.year.value)
-        if normalized_year is None:
-            await interaction.response.send_message(
-                "Year must be **1st Year**, **2nd Year**, **3rd Year**, or **4th Year**.",
-                ephemeral=True,
-            )
-            return
-
-        nickname = build_nickname(
-            self.full_name.value,
-            "student",
-            specialization,
-            normalized_year,
-        )
-
-        if not nickname:
-            await interaction.response.send_message(
-                "Please enter a valid name.",
-                ephemeral=True,
-            )
-            return
-
-        # Never silently cut off the nickname. This prevents
-        # values such as "4th Yea" from being created.
+        nickname = build_student_nickname(self.full_name.value, specialization, year)
         if len(nickname) > MAX_NICKNAME_LENGTH:
             await interaction.response.send_message(
-                nickname_too_long_message(nickname),
+                f"Your nickname would be {len(nickname)} characters. Discord allows 32.\n"
+                "Please use a shorter name so the complete nickname fits.",
                 ephemeral=True,
             )
             return
 
         try:
-            await member.edit(
-                nick=nickname,
-                reason="EM Bot student introduction",
-            )
+            await member.edit(nick=nickname, reason="EM Bot student introduction")
+            await add_role_if_missing(member, INTRODUCED_ROLE_NAME)
+            await remove_role_if_present(member, UNINTRODUCED_ROLE_NAME)
         except discord.Forbidden:
             await interaction.response.send_message(
-                "I couldn't change your nickname. Please make sure EM Bot's role "
-                "is above your role and that it has **Manage Nicknames** permission.",
+                "I couldn't update your nickname/roles. Check EM Bot's role position and permissions.",
                 ephemeral=True,
             )
             return
         except discord.HTTPException:
             await interaction.response.send_message(
-                "Discord rejected the nickname change. Please try again.",
+                "Discord rejected the update. Please try again.",
                 ephemeral=True,
             )
             return
 
         await interaction.response.send_message(
-            f"Your nickname has been updated to **{nickname}**.",
+            f"Your nickname is now **{nickname}**. You can now explore and chat in the server.",
             ephemeral=True,
         )
-        await log_change(interaction.guild, member, nickname, "Student")
+
+        cog = interaction.client.get_cog("Welcome")
+        if cog:
+            await cog.send_introduction_complete_welcome(member, nickname)
 
 
-# -----------------------------
-# Faculty form
-# -----------------------------
-
-class FacultyIntroductionModal(discord.ui.Modal, title="Faculty Introduction"):
+class FacultyIntroductionModal(discord.ui.Modal, title="Faculty/Moderator Introduction"):
     full_name = discord.ui.TextInput(
         label="Full Name",
-        placeholder="Juan Dela Cruz",
+        placeholder="John Doe",
         required=True,
         min_length=2,
         max_length=80,
@@ -254,167 +150,127 @@ class FacultyIntroductionModal(discord.ui.Modal, title="Faculty Introduction"):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         member = interaction.user
-
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message(
-                "This form can only be used inside the server.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
             return
 
         if not has_role(member, FACULTY_ROLE_NAME):
             await interaction.response.send_message(
-                f"You need the **{FACULTY_ROLE_NAME}** role to use the faculty form.",
+                f"You need the **{FACULTY_ROLE_NAME}** role first.",
                 ephemeral=True,
             )
             return
 
-        nickname = build_nickname(self.full_name.value, "faculty")
-
-        if not nickname:
-            await interaction.response.send_message(
-                "Please enter a valid name.",
-                ephemeral=True,
-            )
-            return
-
+        nickname = build_faculty_nickname(self.full_name.value)
         if len(nickname) > MAX_NICKNAME_LENGTH:
             await interaction.response.send_message(
-                nickname_too_long_message(nickname),
+                f"Your nickname would be {len(nickname)} characters. Discord allows 32.\n"
+                "Please use a shorter name.",
                 ephemeral=True,
             )
             return
 
         try:
-            await member.edit(
-                nick=nickname,
-                reason="EM Bot faculty introduction",
-            )
+            await member.edit(nick=nickname, reason="EM Bot faculty introduction")
+            await add_role_if_missing(member, INTRODUCED_ROLE_NAME)
+            await remove_role_if_present(member, UNINTRODUCED_ROLE_NAME)
         except discord.Forbidden:
             await interaction.response.send_message(
-                "I couldn't change your nickname. Please make sure EM Bot's role "
-                "is above your role and that it has **Manage Nicknames** permission.",
+                "I couldn't update your nickname/roles. Check EM Bot's role position and permissions.",
                 ephemeral=True,
             )
             return
         except discord.HTTPException:
-            await interaction.response.send_message(
-                "Discord rejected the nickname change. Please try again.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("Discord rejected the update.", ephemeral=True)
             return
 
         await interaction.response.send_message(
-            f"Your nickname has been updated to **{nickname}**.",
+            f"Your nickname is now **{nickname}**. You can now explore and chat in the server.",
             ephemeral=True,
         )
-        await log_change(interaction.guild, member, nickname, "Faculty")
 
+        cog = interaction.client.get_cog("Welcome")
+        if cog:
+            await cog.send_introduction_complete_welcome(member, nickname)
 
-# -----------------------------
-# Introduction button
-# -----------------------------
 
 class IntroductionView(discord.ui.View):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(timeout=None)
 
     @discord.ui.button(
         label="Introduce Yourself",
         style=discord.ButtonStyle.primary,
         emoji="👋",
-        custom_id="em_bot:introduce",
+        custom_id="em:introduce",
     )
-    async def introduce(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        member = interaction.user
-
-        if not isinstance(member, discord.Member):
-            await interaction.response.send_message(
-                "This can only be used inside the server.",
-                ephemeral=True,
-            )
-            return
-
+    async def introduce(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         if INTRO_CHANNEL_ID and interaction.channel_id != INTRO_CHANNEL_ID:
             await interaction.response.send_message(
-                "Please use the introduction channel for this form.",
+                "Please use the introduction channel.",
                 ephemeral=True,
             )
             return
 
-        status = get_member_status(member)
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            await interaction.response.send_message("Server members only.", ephemeral=True)
+            return
 
-        if status == "student":
-            await interaction.response.send_modal(StudentIntroductionModal())
-        elif status == "faculty":
+        if has_role(member, FACULTY_ROLE_NAME):
             await interaction.response.send_modal(FacultyIntroductionModal())
+        elif has_role(member, STUDENT_ROLE_NAME):
+            await interaction.response.send_modal(StudentIntroductionModal())
         else:
             await interaction.response.send_message(
-                f"I couldn't identify your role. Please make sure you have the "
-                f"**{STUDENT_ROLE_NAME}** or **{FACULTY_ROLE_NAME}** role.",
+                "Your Student or Faculty/Moderator role has not been assigned yet.",
                 ephemeral=True,
             )
 
 
 class Introduction(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-
-        # Register the persistent button after every restart.
         self.bot.add_view(IntroductionView())
 
-    @app_commands.command(
-        name="setup_intro",
-        description="Post the EM Bot introduction panel.",
-    )
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def setup_intro(self, interaction: discord.Interaction) -> None:
-        channel = interaction.channel
+    @app_commands.command(name="setup", description="Open the introduction process.")
+    async def setup(self, interaction: discord.Interaction) -> None:
+        member = interaction.user
+        if not isinstance(member, discord.Member):
+            await interaction.response.send_message("Server members only.", ephemeral=True)
+            return
 
-        if not isinstance(channel, discord.TextChannel):
+        if has_role(member, INTRODUCED_ROLE_NAME):
             await interaction.response.send_message(
-                "Use this command in a text channel.",
+                "Your introduction is already complete.",
                 ephemeral=True,
             )
             return
 
+        view = IntroductionView()
         embed = discord.Embed(
             title="BSEMC Introduction",
             description=(
-                "Welcome to the BSEMC community!\n\n"
-                "Click the button below to introduce yourself.\n"
-                "Your existing **Student** or **Faculty** role determines which "
-                "form you receive.\n\n"
-                "**Students:** Name, specialization, and year\n"
-                "**Faculty:** Name only"
+                "Complete your introduction to unlock normal server access.\n\n"
+                "Your Student or Faculty/Moderator role determines which form you receive."
             ),
             color=discord.Color.blurple(),
         )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-        await interaction.response.send_message(
-            embed=embed,
-            view=IntroductionView(),
+    @app_commands.command(name="setup_intro", description="Post the public introduction panel.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def setup_intro(self, interaction: discord.Interaction) -> None:
+        embed = discord.Embed(
+            title="BSEMC Introduction",
+            description=(
+                "Once your community role has been assigned, click **Introduce Yourself**.\n\n"
+                "**Students:** Full Name + Specialization + Year\n"
+                "**Faculty/Moderator:** Full Name"
+            ),
+            color=discord.Color.blurple(),
         )
+        await interaction.response.send_message(embed=embed, view=IntroductionView())
 
-    @setup_intro.error
-    async def setup_intro_error(
-        self,
-        interaction: discord.Interaction,
-        error: app_commands.AppCommandError,
-    ) -> None:
-        if isinstance(error, app_commands.errors.MissingPermissions):
-            await interaction.response.send_message(
-                "You need **Manage Server** permission to use this command.",
-                ephemeral=True,
-            )
-            return
-
-        raise error
-
-
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Introduction(bot))

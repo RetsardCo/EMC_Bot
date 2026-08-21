@@ -1,121 +1,49 @@
-# EM Bot
+# EM Bot Dual AI Fallback
 
-A database-free Discord bot for the BSEMC community.
+This package contains the updated AI module only.
 
-## Current features
+Primary provider:
+- Gemini REST API
+- Model: `gemini-3.6-flash`
 
-- Welcome message when a member joins (optional welcome channel)
-- Introduction button with Discord Modal forms
-- Nickname formatting based on existing server roles
-  - Student: `Name BSEMC DAT 1st Year`
-  - Student: `Name BSEMC GD 1st Year`
-  - Faculty: `Name BSEMC Faculty`
-- Moderation: timeout, kick, ban, purge
-- Admin tools: manual nickname change, server info, announcements
-- No database
-- No music module
+Fallback provider:
+- OpenRouter REST API
+- Default model: `nvidia/nemotron-3-ultra-550b-a55b:free`
 
-## Important design choice
+Behavior:
+- Try Gemini first.
+- If Gemini fails for any reason, try OpenRouter.
+- Keep the same BSEMC source-channel context and strict numbered style.
+- Keep only short conversation history in RAM.
+- No database.
+- No additional AI SDK is required.
 
-EM Bot does **not** assign Student/Faculty/DAT/GD roles. Your community questions system is responsible for role assignment. EM Bot only checks whether the member already has the `Student` or `Faculty` role.
+## Environment
 
-## Discord permissions
+Add:
 
-The bot should have:
+`OPENROUTER_API_KEY=...`
 
-- View Channels
-- Send Messages
-- Embed Links
-- Read Message History
-- Manage Nicknames
-- Moderate Members
-- Kick Members (if you want `/kick`)
-- Ban Members (if you want `/ban`)
-- Manage Messages (if you want `/purge`)
-- Manage Server (only for admin actions, depending on command permissions)
+Keep:
 
-Also place the bot's role **above the roles of members it needs to rename or moderate**.
+`GEMINI_API_KEY=...`
 
-## Intents
+Do not upload `.env` to GitHub.
 
-In the Discord Developer Portal, enable:
+## Test
 
-- Server Members Intent
-- Message Content Intent
+Restart EM Bot after replacing `cogs/ai.py`:
 
-The bot uses the members intent to handle welcome events and inspect member roles.
-
-## Setup
-
-1. Install Python 3.11 or newer.
-2. Open a terminal in this folder.
-3. Create a virtual environment:
-
-   `python -m venv .venv`
-
-4. Activate it on Windows PowerShell:
-
-   `.\.venv\Scripts\Activate.ps1`
-
-5. Install dependencies:
-
-   `pip install -r requirements.txt`
-
-6. Copy `.env.example` to `.env`.
-7. Put your Discord bot token in `.env`.
-8. Set your channel IDs if you want welcome/log channels.
-9. Run:
-
-   `python bot.py`
-
-## First server setup
-
-Once the bot is online:
-
-1. Make sure the server has roles named exactly `Student` and `Faculty` (or change the names in `.env`).
-2. Put the EM Bot role above those roles.
-3. In the channel where you want the introduction panel, run:
-
-   `/setup_intro`
-
-4. Test the button with a test Student or Faculty account/role.
-
-## Commands
-
-### Nickname / introduction
-
-- `/setup_intro`
-
-### Moderation
-
-- `/timeout`
-- `/kick`
-- `/ban`
-- `/purge`
-
-### Admin
-
-- `/nick`
-- `/serverinfo`
-- `/announce`
-
-## Project structure
-
-```text
-EM_Bot/
-├── bot.py
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── README.md
-└── cogs/
-    ├── __init__.py
-    ├── welcome.py
-    ├── introduction.py
-    ├── moderation.py
-    └── admin.py
+```powershell
+python bot.py
 ```
 
-## Future expansion
+Then test:
 
-This structure is intended to be expanded with additional cogs later, such as verification, event tools, logging, community-question integration, automated announcements, or music.
+`/ask What is the BSEMC Game Jam?`
+
+The bot should use the official Discord source messages, then answer with Gemini. If Gemini is unavailable, it automatically attempts OpenRouter.
+
+## Notes
+
+The OpenRouter free endpoint has its own rate limits/availability. It is a fallback, not a guarantee of unlimited AI access.
