@@ -1,121 +1,586 @@
 # EM Bot
 
-A database-free Discord bot for the BSEMC community.
+EM Bot is a Discord community assistant for the Bicol State College of Applied Sciences and Technology (BSEMC/BISCAST) community.
 
-## Current features
+The bot combines role-based Discord automation, onboarding, moderation, official-document knowledge retrieval, and multi-provider AI routing.
 
-- Welcome message when a member joins (optional welcome channel)
-- Introduction button with Discord Modal forms
-- Nickname formatting based on existing server roles
-  - Student: `Name BSEMC DAT 1st Year`
-  - Student: `Name BSEMC GD 1st Year`
-  - Faculty: `Name BSEMC Faculty`
-- Moderation: timeout, kick, ban, purge
-- Admin tools: manual nickname change, server info, announcements
-- No database
-- No music module
+## Features
 
-## Important design choice
+### Discord onboarding
 
-EM Bot does **not** assign Student/Faculty/DAT/GD roles. Your community questions system is responsible for role assignment. EM Bot only checks whether the member already has the `Student` or `Faculty` role.
+- Automatic welcome message for new members.
+- `/setup` opens the appropriate Student or verified Faculty introduction form.
+- Student setup can assign:
+  - `BISCAST`
+  - `Student`
+  - specialization/year role
+  - `Introduced`
+- Nickname format is based on the user's name, specialization, and year.
+- Users can complete the nickname setup only once.
+- Future nickname changes must be handled manually by Moderator or EMC Faculty.
+- Verified faculty can use the `!Faculty` verification role before completing the Faculty setup.
+- After successful Faculty setup, `!Faculty` is replaced by `Faculty`.
+- EMC Faculty remains a manually assigned elevated staff role.
 
-## Discord permissions
+### Role-based help and commands
 
-The bot should have:
+`/help` shows commands according to the member's access level.
 
-- View Channels
-- Send Messages
-- Embed Links
-- Read Message History
-- Manage Nicknames
-- Moderate Members
-- Kick Members (if you want `/kick`)
-- Ban Members (if you want `/ban`)
-- Manage Messages (if you want `/purge`)
-- Manage Server (only for admin actions, depending on command permissions)
+The bot supports different command availability for students, Faculty, Moderator, and EMC Faculty.
 
-Also place the bot's role **above the roles of members it needs to rename or moderate**.
+### Feedback
 
-## Intents
+`/feedback` allows members to submit suggestions or feedback.
 
-In the Discord Developer Portal, enable:
-
-- Server Members Intent
-- Message Content Intent
-
-The bot uses the members intent to handle welcome events and inspect member roles.
-
-## Setup
-
-1. Install Python 3.11 or newer.
-2. Open a terminal in this folder.
-3. Create a virtual environment:
-
-   `python -m venv .venv`
-
-4. Activate it on Windows PowerShell:
-
-   `.\.venv\Scripts\Activate.ps1`
-
-5. Install dependencies:
-
-   `pip install -r requirements.txt`
-
-6. Copy `.env.example` to `.env`.
-7. Put your Discord bot token in `.env`.
-8. Set your channel IDs if you want welcome/log channels.
-9. Run:
-
-   `python bot.py`
-
-## First server setup
-
-Once the bot is online:
-
-1. Make sure the server has roles named exactly `Student` and `Faculty` (or change the names in `.env`).
-2. Put the EM Bot role above those roles.
-3. In the channel where you want the introduction panel, run:
-
-   `/setup_intro`
-
-4. Test the button with a test Student or Faculty account/role.
-
-## Commands
-
-### Nickname / introduction
-
-- `/setup_intro`
+Feedback is intended to be forwarded into a staff-only feedback channel.
 
 ### Moderation
 
-- `/timeout`
-- `/kick`
-- `/ban`
-- `/purge`
+The bot includes configurable protections for:
 
-### Admin
+- Spam
+- Repeated messages
+- Excessive mentions
+- New-account raids
+- Automatic timeouts
+- Bad-word filtering
+- Link restrictions
+- Role/channel exemptions
 
-- `/nick`
-- `/serverinfo`
-- `/announce`
+### AI system
 
-## Project structure
+EM Bot uses an external-provider architecture rather than running a local language model.
+
+Configured providers can include:
+
+- Gemini
+- OpenRouter
+- Mistral
+
+The AI router can select different models for different request types, including:
+
+- General questions
+- Coding
+- Reasoning
+- Fast responses
+- Vision/image questions
+- Agent/tool-style tasks
+
+The bot keeps the AI output limit configurable with:
+
+```env
+AI_MAX_OUTPUT_TOKENS=1200
+```
+
+Images can be processed through the vision route when supported.
+
+## Official-information safety model
+
+Official BSEMC information is treated differently from ordinary educational questions.
+
+The bot is instructed to:
+
+1. Use verified official documents as authoritative sources.
+2. Never invent missing curriculum subjects, units, prerequisites, requirements, dates, or policies.
+3. Say that verified information is unavailable when the official knowledge base does not contain the requested information.
+4. Avoid presenting general model knowledge as current official BSEMC information.
+5. Prefer structured verified JSON/CSV over AI-extracted PDF knowledge.
+
+This is especially important for curriculum, attendance, admissions, grading, policies, and student-handbook questions.
+
+## Knowledge system
+
+The knowledge system supports:
+
+```text
+JSON
+CSV
+PDF
+Markdown cache
+```
+
+### Recommended knowledge hierarchy
+
+```text
+Verified JSON/CSV
+        ↓
+Direct structured retrieval
+        ↓
+AI formatting
+```
+
+For PDFs:
+
+```text
+PDF
+ ↓
+AI extraction
+ ↓
+DRAFT
+ ↓
+Staff review
+ ↓
+Approve
+ ↓
+VERIFIED / CURRENT
+```
+
+A PDF extraction is therefore not automatically treated as authoritative.
+
+### Why JSON is preferred for structured information
+
+For curricula, course descriptions, policies, and other structured official information, JSON is preferred because it preserves hierarchy and fields such as:
+
+```text
+Program
+Year
+Semester
+Course code
+Course title
+Units
+Prerequisite
+Description
+Policy section
+```
+
+CSV is useful for flat tables.
+
+PDF is retained as an original/reference document, but AI-extracted PDF data requires review before becoming authoritative.
+
+## Knowledge document lifecycle
+
+Documents can have these states:
+
+```text
+🟡 DRAFT
+🔒 VERIFIED
+✅ CURRENT
+🗃️ ARCHIVED
+```
+
+### Meaning
+
+**DRAFT**
+
+AI-extracted PDF/Markdown knowledge that still requires staff review.
+
+**VERIFIED**
+
+Structured or reviewed knowledge that is trusted but may not be the active/current document.
+
+**CURRENT**
+
+The active official document used for current questions.
+
+**ARCHIVED**
+
+Historical knowledge retained for reference but excluded from current-answer retrieval.
+
+## Knowledge categories
+
+The Knowledge Manager is not limited to curriculum.
+
+Supported categories include:
+
+```text
+curriculum
+program_specifications
+course_descriptions
+admissions
+student_handbook
+rules
+faq
+events
+policies
+faculty
+scholarship
+internship
+specialization
+academic_calendar
+syllabus
+other
+```
+
+Single-current categories can keep one active document per scope, while categories such as events or FAQ can support multiple current documents.
+
+## Knowledge Manager
+
+Staff can use:
+
+```text
+/knowledge
+```
+
+This opens the private Knowledge Manager GUI.
+
+The GUI can be used to:
+
+- View stored documents.
+- Inspect document status.
+- Select a document.
+- Set a document as Current.
+- Archive a document.
+- Review pending PDF extractions.
+- Repair legacy JSON/CSV status metadata.
+- Activate verified structured documents.
+
+### Bulk activation
+
+The Knowledge Manager includes:
+
+```text
+✅ Set All Verified as Current
+```
+
+This is useful after:
+
+- A server restart
+- A fresh deployment
+- Importing a knowledge backup
+- Rebuilding the knowledge directory
+
+It activates eligible verified JSON/CSV documents.
+
+PDF/Markdown drafts are not automatically activated.
+
+### Legacy status repair
+
+The Knowledge Manager also includes:
+
+```text
+🔧 Repair JSON/CSV Status
+```
+
+This repairs older knowledge manifests where structured JSON/CSV files may have been incorrectly recorded as DRAFT.
+
+## Knowledge commands
+
+Common staff commands include:
+
+```text
+/knowledge
+/knowledge_add
+/knowledge_list
+/knowledge_export
+/knowledge_export_md
+/knowledge_import
+/knowledge_rebuild
+/knowledge_rebuild_structured
+/knowledge_test
+```
+
+### `/knowledge_test`
+
+`/knowledge_test` is the main knowledge diagnostic command.
+
+It tests the same general retrieval path used by `/ask` and reports:
+
+```text
+Expected source
+Category
+Status used
+Route
+Expected fields
+Expected answer data
+```
+
+Example:
+
+```text
+/knowledge_test question: What is GD 302?
+```
+
+A successful result should identify the appropriate structured source, such as:
+
+```text
+BSEMC_course_descriptions.json
+```
+
+and report that the route used direct verified JSON.
+
+## Direct structured retrieval
+
+For structured official information, the bot uses direct lookup before generic knowledge fallback.
+
+Example:
+
+```text
+User:
+What is GD 302?
+
+Knowledge router:
+1. Detect explicit course code GD 302
+2. Search verified JSON course records
+3. Match courses[].code
+4. Select the exact course record
+5. Pass the exact record to the AI
+6. AI formats the response
+```
+
+This prevents unrelated PDFs or general model knowledge from replacing an exact structured fact.
+
+The same approach can be used for:
+
+- Course codes
+- Prerequisites
+- Units
+- Student-handbook policies
+- Attendance rules
+- Admissions requirements
+- Scholarship information
+- Program specifications
+- Course descriptions
+
+## Curriculum management
+
+Curriculum documents should be treated as versioned official knowledge.
+
+Example:
+
+```text
+2023_bsemc-gd_curr_approved.json
+        ↓
+🗃️ ARCHIVED
+
+2026_bsemc-gd_curr_approved.json
+        ↓
+✅ CURRENT
+```
+
+Older curricula can remain stored for historical reference.
+
+The active curriculum should be explicitly marked Current rather than allowing the AI to guess which version is newer.
+
+## Startup/recovery workflow
+
+After a production restart:
+
+```text
+1. Start the bot
+2. Run /knowledge
+3. Check knowledge statuses
+4. Use Repair JSON/CSV Status if necessary
+5. Use Set All Verified as Current when appropriate
+6. Run /knowledge_test
+7. Test /ask
+```
+
+This is especially useful on low-resource hosting or after importing knowledge backups.
+
+## Production hosting
+
+EM Bot is designed to use external AI APIs rather than running local AI models.
+
+This makes it suitable for small servers such as a VM with approximately:
+
+```text
+512 MB RAM
+1 GB disk
+limited CPU
+```
+
+For low-resource production servers:
+
+- Prefer JSON/CSV for important structured knowledge.
+- Avoid large PDF collections.
+- Keep AI history short.
+- Limit output tokens.
+- Avoid unnecessary in-memory caching.
+- Use external AI providers for inference.
+
+## Environment variables
+
+A typical production `.env` contains:
+
+```env
+# Discord
+DISCORD_TOKEN=
+TEST_GUILD_IDS=
+
+# Roles
+FACULTY_ROLE_NAME=Faculty
+MODERATOR_ROLE_NAME=Moderator
+STUDENT_ROLE_NAME=Student
+INTRODUCED_ROLE_NAME=Introduced
+UNINTRODUCED_ROLE_NAME=Unintroduced
+
+# Channels
+WELCOME_CHANNEL_ID=0
+INTRO_COMPLETE_CHANNEL_ID=0
+INTRO_CHANNEL_ID=0
+MOD_LOG_CHANNEL_ID=0
+AI_CHANNEL_ID=0
+
+# AI providers
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.6-flash
+
+OPENROUTER_API_KEY=
+OPENROUTER_CODING_MODEL=openai/gpt-oss-120b:free
+OPENROUTER_CODING_FALLBACK=qwen/qwen3-coder:free
+OPENROUTER_REASONING_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
+OPENROUTER_FAST_MODEL=openai/gpt-oss-20b:free
+OPENROUTER_LIGHTNING_MODEL=nvidia/nemotron-3.5-lightning:free
+OPENROUTER_VISION_MODEL=google/gemma-4-31b-it:free
+OPENROUTER_VISION_FALLBACK=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+OPENROUTER_AGENT_MODEL=openai/gpt-oss-120b:free
+
+MISTRAL_API_KEY=
+MISTRAL_MODEL=mistral-small-latest
+
+# AI settings
+AI_COOLDOWN_SECONDS=10
+AI_MAX_HISTORY_TURNS=4
+AI_MAX_OUTPUT_TOKENS=1200
+AI_MAX_IMAGE_BYTES=3145728
+
+# Official BSEMC source channels
+AI_SOURCE_CHANNEL_IDS=
+AI_SOURCE_LOOKBACK_MESSAGES=50
+```
+
+Do not commit `.env` or API keys to GitHub.
+
+## Installation
+
+### 1. Clone the repository
+
+```bash
+git clone <YOUR_REPOSITORY_URL>
+cd EM_Bot
+```
+
+### 2. Create a virtual environment
+
+Windows:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure `.env`
+
+Create:
+
+```text
+.env
+```
+
+and add the required Discord and AI provider credentials.
+
+### 5. Start the bot
+
+```bash
+python bot.py
+```
+
+## Development and production
+
+Recommended workflow:
+
+```text
+Development machine
+        ↓
+Test Discord server
+        ↓
+Verify commands / knowledge / AI
+        ↓
+Production server
+        ↓
+Official Discord server
+```
+
+Do not test potentially destructive moderation or knowledge changes directly on production when a development server is available.
+
+## Security
+
+Never commit any of the following:
+
+```text
+DISCORD_TOKEN
+GEMINI_API_KEY
+OPENROUTER_API_KEY
+MISTRAL_API_KEY
+.env
+```
+
+Also review Discord permissions carefully, especially for:
+
+- Manage Nicknames
+- Manage Roles
+- Moderate Members
+- Manage Messages
+- View Audit Log
+- Send Messages
+
+The `EMC Faculty` role should be manually controlled because it provides elevated administrative capabilities.
+
+## Suggested repository structure
 
 ```text
 EM_Bot/
 ├── bot.py
+├── .env
 ├── requirements.txt
-├── .env.example
-├── .gitignore
-├── README.md
-└── cogs/
-    ├── __init__.py
-    ├── welcome.py
-    ├── introduction.py
-    ├── moderation.py
-    └── admin.py
+├── cogs/
+│   ├── ai.py
+│   ├── admin.py
+│   ├── automod.py
+│   ├── feedback.py
+│   ├── help.py
+│   ├── introduction.py
+│   ├── knowledge.py
+│   ├── moderation.py
+│   ├── polls.py
+│   └── welcome.py
+├── knowledge/
+│   ├── source/
+│   ├── cache/
+│   ├── drafts/
+│   └── manifest.json
+└── README.md
 ```
 
-## Future expansion
+## Current design principles
 
-This structure is intended to be expanded with additional cogs later, such as verification, event tools, logging, community-question integration, automated announcements, or music.
+The current architecture follows these priorities:
+
+```text
+Exact verified structured data
+        ↓
+Direct source retrieval
+        ↓
+AI formatting
+        ↓
+Generic knowledge fallback
+```
+
+The AI should explain official information, not invent or reconstruct it.
+
+For official documents, a verified source should always take priority over model memory.
+
+
+## Maintainer notes
+
+When updating the bot:
+
+1. Test changes on the development Discord server.
+2. Verify `/knowledge_test` before testing `/ask`.
+3. Check document status after deployment.
+4. Use `/knowledge` to manage Current/Verified/Archived state.
+5. Keep structured JSON/CSV authoritative and reviewed.
+6. Treat PDF extraction as draft knowledge until manually approved.
