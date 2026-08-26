@@ -288,10 +288,13 @@ async def rebuild_missing_or_changed() -> None:
             continue
 
         entry = manifest.get(source.name, {})
+        original_status = str(
+            entry.get("status", "")
+        ).casefold()
 
-        # PDFs are unsafe to trust automatically. If there is no explicit
-        # verified status, keep them as drafts.
-        is_verified = entry.get("status") == "verified"
+        # Preserve CURRENT/VERIFIED structured knowledge across restarts.
+        # PDFs without explicit approval remain drafts.
+        is_verified = original_status in {"verified", "current"}
 
         try:
             result = await process_source_file(
@@ -300,6 +303,14 @@ async def rebuild_missing_or_changed() -> None:
                 force=False,
                 verified=is_verified,
             )
+
+            # process_source_file() records verified=True as "verified".
+            # Restore CURRENT because CURRENT is the active retrieval state.
+            if original_status == "current":
+                updated = load_manifest()
+                if source.name in updated:
+                    updated[source.name]["status"] = "current"
+                    save_manifest(updated)
 
             if result == "processed":
                 print(
@@ -1610,48 +1621,152 @@ class GenericKnowledgeSelect(discord.ui.Select):
 
 
 
-def set_all_verified_as_current() -> tuple[int, int, list[str]]:
+def activate_all_structured_documents() -> tuple[int, int, list[str]]:
+    """
+    Activate all non-archived JSON/CSV documents.
+
+    Legacy structured documents incorrectly marked DRAFT are repaired here.
+    PDF/Markdown drafts are never activated.
+
+    For single-current categories, different scopes (for example GD vs DAT)
+    may both be CURRENT. Same-category/same-scope duplicates are reported and
+    left unchanged to prevent ambiguous retrieval.
+    """
     manifest = load_manifest()
+
     candidates: list[tuple[str, str, str]] = []
     conflicts: list[str] = []
 
-    for filename, entry in manifest.items():
-        status = str(entry.get("status", "")).casefold()
-        source_type = str(entry.get("source_type", "")).casefold()
-
-        if status != "verified" or source_type not in {"json", "csv"}:
+    for path in sorted(
+        SOURCE_DIR.iterdir(),
+        key=lambda p: p.name.casefold(),
+    ):
+        if not path.is_file():
             continue
 
-        category = str(entry.get("category", "other")).casefold()
-        scope = str(entry.get("scope", ""))
-        candidates.append((filename, category, scope))
+        suffix = path.suffix.casefold()
 
+        if suffix not in {".json", ".csv"}:
+            continue
+
+        entry = manifest.setdefault(
+            path.name,
+            {},
+        )
+
+        if str(
+            entry.get(
+                "status",
+                "",
+            )
+        ).casefold() == "archived":
+            continue
+
+        if suffix == ".json":
+            try:
+                data = json.loads(
+                    path.read_text(
+                        encoding="utf-8",
+                    )
+                )
+            except (
+                OSError,
+                json.JSONDecodeError,
+            ):
+                conflicts.append(
+                    f"{path.name} (invalid JSON)"
+                )
+                continue
+
+            if not isinstance(data, dict):
+                conflicts.append(
+                    f"{path.name} (JSON root is not an object)"
+                )
+                continue
+
+            category = _json_category(
+                path.name,
+                data,
+            )
+            scope = _json_scope(
+                data,
+            )
+
+            entry["source_type"] = "json"
+            entry["category"] = category
+            entry["scope"] = scope
+
+        else:
+            category = str(
+                entry.get(
+                    "category",
+                    "other",
+                )
+            ).casefold() or "other"
+
+            scope = str(
+                entry.get(
+                    "scope",
+                    "",
+                )
+            )
+
+            entry["source_type"] = "csv"
+            entry["category"] = category
+            entry["scope"] = scope
+
+        candidates.append(
+            (
+                path.name,
+                category,
+                scope,
+            )
+        )
+
+        manifest[path.name] = entry
+
+    # Protect single-current categories from duplicate active documents
+    # having the same category and scope.
     grouped: dict[tuple[str, str], list[str]] = {}
+
     for filename, category, scope in candidates:
         if category in SINGLE_CURRENT_CATEGORIES:
-            grouped.setdefault((category, scope), []).append(filename)
+            grouped.setdefault(
+                (
+                    category,
+                    scope.casefold(),
+                ),
+                [],
+            ).append(filename)
 
     for filenames in grouped.values():
         if len(filenames) > 1:
             conflicts.extend(filenames)
 
     activated = 0
+
     for filename, _, _ in candidates:
         if filename in conflicts:
             continue
+
         manifest[filename]["status"] = "current"
         activated += 1
 
     save_manifest(manifest)
-    return activated, len(conflicts), conflicts
+
+    return (
+        activated,
+        len(conflicts),
+        conflicts,
+    )
 
 
-class SetAllCurrentConfirmView(discord.ui.View):
+class ActivateAllStructuredConfirmView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=90)
 
     @discord.ui.button(
-        label="Set All Verified as Current",
+        label="Activate All JSON/CSV",
         style=discord.ButtonStyle.success,
         emoji="✅",
     )
@@ -1664,28 +1779,37 @@ class SetAllCurrentConfirmView(discord.ui.View):
 
         if not isinstance(member, discord.Member) or not is_staff(member):
             await interaction.response.edit_message(
-                content="1. Only Moderator and EMC Faculty can change knowledge status.",
+                content=(
+                    "1. Only Moderator and EMC Faculty can change knowledge status."
+                ),
                 view=None,
             )
             return
 
-        activated, conflict_count, conflicts = set_all_verified_as_current()
+        activated, conflict_count, conflicts = (
+            activate_all_structured_documents()
+        )
 
         lines = [
             f"✅ **Activated:** {activated}",
-            f"⚠️ **Conflicts skipped:** {conflict_count}",
+            f"⚠️ **Skipped/conflicts:** {conflict_count}",
             "",
-            "Only verified JSON/CSV documents were activated.",
-            "PDF/Markdown drafts were not changed.",
+            "JSON/CSV documents were activated as CURRENT.",
+            "PDF/Markdown drafts were not activated.",
         ]
 
         if conflicts:
-            lines.append("")
-            lines.append("**Conflicting documents:**")
             lines.extend(
-                f"• `{name}`"
-                for name in conflicts[:10]
+                [
+                    "",
+                    "**Skipped documents:**",
+                    *[
+                        f"• `{name}`"
+                        for name in conflicts[:10]
+                    ],
+                ]
             )
+
             if len(conflicts) > 10:
                 lines.append(
                     f"• ...and {len(conflicts) - 10} more"
@@ -1717,15 +1841,17 @@ class GenericKnowledgeManagerView(discord.ui.View):
         super().__init__(timeout=300)
 
         if generic_manager_documents():
-            self.add_item(GenericKnowledgeSelect())
+            self.add_item(
+                GenericKnowledgeSelect()
+            )
 
     @discord.ui.button(
-        label="Set All Verified as Current",
+        label="Activate All JSON/CSV",
         style=discord.ButtonStyle.success,
         emoji="✅",
         row=1,
     )
-    async def set_all_current(
+    async def activate_all(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button,
@@ -1739,16 +1865,25 @@ class GenericKnowledgeManagerView(discord.ui.View):
             )
             return
 
-        verified_count = sum(
+        structured_count = sum(
             1
-            for entry in load_manifest().values()
-            if str(entry.get("status", "")).casefold() == "verified"
-            and str(entry.get("source_type", "")).casefold() in {"json", "csv"}
+            for path in SOURCE_DIR.iterdir()
+            if path.is_file()
+            and path.suffix.casefold() in {".json", ".csv"}
+            and str(
+                load_manifest().get(
+                    path.name,
+                    {},
+                ).get(
+                    "status",
+                    "",
+                )
+            ).casefold() != "archived"
         )
 
-        if verified_count == 0:
+        if structured_count == 0:
             await interaction.response.send_message(
-                "1. There are no verified JSON/CSV documents to activate.\n\n"
+                "1. There are no JSON/CSV documents to activate.\n\n"
                 "2. PDF/Markdown drafts must be reviewed separately.",
                 ephemeral=True,
             )
@@ -1756,12 +1891,13 @@ class GenericKnowledgeManagerView(discord.ui.View):
 
         await interaction.response.send_message(
             (
-                "📚 **Activate Verified Knowledge**\n\n"
-                f"Found **{verified_count}** verified JSON/CSV document(s).\n\n"
-                "Set all eligible verified structured documents to **CURRENT**?\n\n"
+                "📚 **Activate Structured Knowledge**\n\n"
+                f"Found **{structured_count}** eligible JSON/CSV document(s).\n\n"
+                "Activate all eligible structured documents as **CURRENT**?\n\n"
+                "This also repairs legacy JSON/CSV entries incorrectly marked as DRAFT.\n"
                 "PDF/Markdown drafts will **not** be activated."
             ),
-            view=SetAllCurrentConfirmView(),
+            view=ActivateAllStructuredConfirmView(),
             ephemeral=True,
         )
 
@@ -2555,15 +2691,24 @@ class DraftSelect(discord.ui.Select):
             )
             return
 
-        preview = content[:3500]
+        # Discord interaction responses have a 2000-character content limit.
+        preview_limit = 1400
+        preview = content[:preview_limit]
 
-        if len(content) > 3500:
+        if len(content) > preview_limit:
             preview += "\n\n...[preview truncated]"
 
-        await interaction.response.send_message(
+        # Prevent extracted triple-backticks from breaking our preview fence.
+        preview = preview.replace("```", "` ` `")
+
+        message = (
             f"📄 **Draft Review: {filename}**\n\n"
             f"```text\n{preview}\n```\n\n"
-            "Review the extracted information carefully before approving it.",
+            "Review the extracted information carefully before approving it."
+        )
+
+        await interaction.response.send_message(
+            message,
             view=DraftReviewView(filename),
             ephemeral=True,
         )
@@ -2849,7 +2994,7 @@ class Knowledge(commands.Cog):
                     "📚 **Knowledge Manager**\n\n"
                     f"**Documents:** {len(all_docs)}\n"
                     f"**Current:** {len(current)}\n\n"
-                    "Select any official document to manage its category and status.\n"                    "Use **✅ Set All Verified as Current** to activate eligible JSON/CSV files at once."
+                    "Select any official document to manage its category and status.\nUse **✅ Activate All JSON/CSV** to activate all eligible structured files."
                 ),
                 view=GenericKnowledgeManagerView(),
                 ephemeral=True,
