@@ -49,6 +49,9 @@ class EMBot(commands.Bot):
             "cogs.polls",
             "cogs.automod",
             "cogs.ai",
+            "cogs.help",
+            "cogs.feedback",
+            "cogs.knowledge",
         )
 
         for extension in extensions:

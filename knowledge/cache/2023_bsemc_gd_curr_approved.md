@@ -1,0 +1,799 @@
+# SOURCE_DOCUMENT: 2023_bsemc-gd_curr_approved.json
+# SOURCE_SHA256: 2c76a07fc113d1d11e55f034cefb66797fc58519f64145b0d3e38feada76d269
+# EXTRACTION_PROVIDER: local-json
+# STATUS: VERIFIED
+# AUTHORITY: OFFICIAL_DOCUMENT
+
+{
+  "program": "4-YEAR BACHELOR OF SCIENCE IN ENTERTAINMENT and MULTIMEDIA COMPUTING",
+  "major": "GAME DEVELOPMENT (BSEMC-GD)",
+  "institution": "BICOL STATE COLLEGE OF APPLIED SCIENCES AND TECHNOLOGY",
+  "college": "COLLEGE OF ARTS AND SCIENCES",
+  "reference_details": "as per BOT Res. No., s. 2023; CMO No. 39, S. 2021; CMO 02 s. 2014; CMO 40 s. 2008; CMO 20 s. 2013, CHED Reg'l. Letter 124 s. 2017; CMO 46, s. 2012; BOT Res. 125, s. 2015",
+  "curriculum": [
+    {
+      "year": "FIRST YEAR",
+      "semesters": [
+        {
+          "semester": "First Semester",
+          "courses": [
+            {
+              "code": "CCCS100A",
+              "description": "Introduction to Computing (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "none"
+            },
+            {
+              "code": "CCCS100AL",
+              "description": "Introduction to Computing (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "none"
+            },
+            {
+              "code": "EMCS100",
+              "description": "Freehand and Digital Drawing (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "none"
+            },
+            {
+              "code": "EMCS100 L",
+              "description": "Freehand and Digital Drawing (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "none"
+            },
+            {
+              "code": "CCCS101",
+              "description": "Computer Programming 1 (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "none"
+            },
+            {
+              "code": "CCCS101L",
+              "description": "Computer Programming 1 (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "none"
+            },
+            {
+              "code": "MAMW001",
+              "description": "Mathematics in the Modern World",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "ELEC009",
+              "description": "Philippine Indigenous Communities",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "EMCS103",
+              "description": "Script Writing and Storyboard Design",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "UNTS001",
+              "description": "Understanding the Self",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "PATH001",
+              "description": "PATHFit 1-Movement Competency Training",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "none"
+            },
+            {
+              "code": "NSTP001",
+              "description": "NSTP 1 (CWTS/LTS/ROTC)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            }
+          ],
+          "total": {
+            "lec": 23,
+            "lab": 9,
+            "units": 26
+          }
+        },
+        {
+          "semester": "Second Semester",
+          "courses": [
+            {
+              "code": "CCCS102",
+              "description": "Computer Programming 2 (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS101"
+            },
+            {
+              "code": "CCCS102L",
+              "description": "Computer Programming 2 (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS101L"
+            },
+            {
+              "code": "EMCS102",
+              "description": "Principles of 2D Animation (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "EMCS100L"
+            },
+            {
+              "code": "EMCS102L",
+              "description": "Principles of 2D Animation (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "EMCS100 L"
+            },
+            {
+              "code": "DATC100",
+              "description": "Image and Video Processing (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "EMCS100"
+            },
+            {
+              "code": "DATC100 L",
+              "description": "Image and Video Processing (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "EMCS100"
+            },
+            {
+              "code": "ELEC007",
+              "description": "Living in the IT Era",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "REPH001",
+              "description": "Readings in Philippine History",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "STAS001",
+              "description": "Science, Technology, and Society",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "EWBE001",
+              "description": "Energy and Water in the Build Environment",
+              "lec_hours": 1,
+              "lab_hours": 0,
+              "units": 1,
+              "prerequisite": "none"
+            },
+            {
+              "code": "EMCE101",
+              "description": "EMC Professional Elective 1 (Digital Photography)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "PATH002",
+              "description": "PATHFit 2-Exercise-based Fitness Activities",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "PATH001"
+            },
+            {
+              "code": "NSTP002",
+              "description": "NSTP 2 (CWTS/LTS/ROTC)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "NSTP001"
+            }
+          ],
+          "total": {
+            "lec": 24,
+            "lab": 9,
+            "units": 27
+          }
+        }
+      ]
+    },
+    {
+      "year": "SECOND YEAR",
+      "semesters": [
+        {
+          "semester": "First Semester",
+          "courses": [
+            {
+              "code": "EMCS101",
+              "description": "Introduction to Game Design and Development (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS102"
+            },
+            {
+              "code": "EMCS101L",
+              "description": "Introduction to Game Design and Development (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS102L"
+            },
+            {
+              "code": "DATC101",
+              "description": "Advance 2D Animation (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "EMCS102"
+            },
+            {
+              "code": "DATC101L",
+              "description": "Advance 2D Animation (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "EMCS102L"
+            },
+            {
+              "code": "EMCS105",
+              "description": "Usability, HCI, and User Interaction Design",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "CCCS102/L"
+            },
+            {
+              "code": "CCCS103",
+              "description": "Data Structures and Algorithms (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS102"
+            },
+            {
+              "code": "CCCS103L",
+              "description": "Data Structures and Algorithms (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS102L"
+            },
+            {
+              "code": "EMCS107",
+              "description": "Audio Design and Sound Engineering (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "DATC100"
+            },
+            {
+              "code": "EMCS107L",
+              "description": "Audio Design and Sound Engineering (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "DATC100L"
+            },
+            {
+              "code": "EMCE102",
+              "description": "EMC Professional Elective 2 (Web Systems and Technologies)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "ELEC010",
+              "description": "Gender and Society",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "PURC001",
+              "description": "Purposive Communication",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "PATH003",
+              "description": "PATHFit 3-Dance",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "PATH002"
+            }
+          ],
+          "total": {
+            "lec": 22,
+            "lab": 12,
+            "units": 26
+          }
+        },
+        {
+          "semester": "Second Semester",
+          "courses": [
+            {
+              "code": "EMCS106",
+              "description": "Principles of 3D Animation (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "EMCS102"
+            },
+            {
+              "code": "EMCS106L",
+              "description": "Principles of 3D Animation (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "EMCS102L"
+            },
+            {
+              "code": "EMCS104",
+              "description": "Computer Graphics and Programming (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS103"
+            },
+            {
+              "code": "EMCS104L",
+              "description": "Computer Graphics and Programming (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS103L"
+            },
+            {
+              "code": "CCCS105",
+              "description": "Information Management",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "CCCS103/L"
+            },
+            {
+              "code": "CCCS104",
+              "description": "Applications Development and Emerging Technologies (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS102"
+            },
+            {
+              "code": "CCCS104L",
+              "description": "Applications Development and Emerging Technologies (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS102L"
+            },
+            {
+              "code": "GDEV100",
+              "description": "Game Programming 1 (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS102"
+            },
+            {
+              "code": "GDEV100L",
+              "description": "Game Programming 1 (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS102L"
+            },
+            {
+              "code": "EMCE103",
+              "description": "EMC Professional Elective 3 (2D Animation Production)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "TCWD001",
+              "description": "The Contemporary World",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            },
+            {
+              "code": "PATH004",
+              "description": "PATHFIT 4-Individual and Dual/Team Sports",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "PATH003"
+            }
+          ],
+          "total": {
+            "lec": 19,
+            "lab": 12,
+            "units": 23
+          }
+        }
+      ]
+    },
+    {
+      "year": "THIRD YEAR",
+      "semesters": [
+        {
+          "semester": "First Semester",
+          "courses": [
+            {
+              "code": "EMCS108",
+              "description": "Design and Production Process",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "EMCS106, EMCS106L"
+            },
+            {
+              "code": "GDEV102",
+              "description": "Applied Mathematics for Games (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "MAMW001"
+            },
+            {
+              "code": "GDEV102L",
+              "description": "Applied Mathematics for Games (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "MAMW001"
+            },
+            {
+              "code": "GDEV103",
+              "description": "Applied Game Physics (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "GDEV102*"
+            },
+            {
+              "code": "GDEV103L",
+              "description": "Applied Game Physics (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "GDEV102L"
+            },
+            {
+              "code": "GDEV101",
+              "description": "Game Programming 2 (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "GDEV100"
+            },
+            {
+              "code": "GDEV101L",
+              "description": "Game Programming 2 (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "GDEV100L"
+            },
+            {
+              "code": "EMCE104",
+              "description": "EMC Professional Elective 4 (Advertising and Marketing)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "3rd year standing"
+            },
+            {
+              "code": "EMCE105",
+              "description": "EMC Professional Elective 5 (UI/UX Design and Programming)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "3rd year standing"
+            },
+            {
+              "code": "ARTA001",
+              "description": "Art Appreciation",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            }
+          ],
+          "total": {
+            "lec": 18,
+            "lab": 9,
+            "units": 21
+          }
+        },
+        {
+          "semester": "Second Semester",
+          "courses": [
+            {
+              "code": "GDEV104",
+              "description": "Game Programming 3 (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "GDEV101"
+            },
+            {
+              "code": "GDEV104L",
+              "description": "Game Programming 3 (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "GDEV101L"
+            },
+            {
+              "code": "GDEV105",
+              "description": "Artificial Intelligence in Games (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS103, GDEV103"
+            },
+            {
+              "code": "GDEV105L",
+              "description": "Artificial Intelligence in Games (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS103L, GDEV103L"
+            },
+            {
+              "code": "GDEV106",
+              "description": "Game Networking (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "CCCS103L, GDEV100L"
+            },
+            {
+              "code": "GDEV106L",
+              "description": "Game Networking (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "CCCS103L, GDEV100L"
+            },
+            {
+              "code": "EMCP101",
+              "description": "Capstone Project 1",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "3rd year standing"
+            },
+            {
+              "code": "EMCE106",
+              "description": "EMC Professional Elective 6 (Game Art Production)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "3rd year standing"
+            },
+            {
+              "code": "EMCE107",
+              "description": "EMC Professional Elective 7 (Mobile Game Development)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "3rd year standing"
+            },
+            {
+              "code": "RIZL001",
+              "description": "Life and Works of Rizal",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            }
+          ],
+          "total": {
+            "lec": 9,
+            "lab": 18,
+            "units": 21
+          }
+        }
+      ]
+    },
+    {
+      "year": "FOURTH YEAR",
+      "semesters": [
+        {
+          "semester": "First Semester",
+          "courses": [
+            {
+              "code": "GDEV107",
+              "description": "Advance Game Design (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "EMCS101, GDEV108*"
+            },
+            {
+              "code": "GDEV107L",
+              "description": "Advance Game Design (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "EMCS101L, GDEV108L*"
+            },
+            {
+              "code": "GDEV108",
+              "description": "Game Production (Lec)",
+              "lec_hours": 2,
+              "lab_hours": 0,
+              "units": 2,
+              "prerequisite": "GDEV107*"
+            },
+            {
+              "code": "GDEV108L",
+              "description": "Game Production (Lab)",
+              "lec_hours": 0,
+              "lab_hours": 3,
+              "units": 1,
+              "prerequisite": "GDEV107L*"
+            },
+            {
+              "code": "EMCP102",
+              "description": "Capstone Project 2",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "EMCP101"
+            },
+            {
+              "code": "ETHC001",
+              "description": "Ethics (with Peace Education)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "4th year Standing"
+            },
+            {
+              "code": "ELEC004",
+              "description": "Free Elective (Technopreneurship)",
+              "lec_hours": 3,
+              "lab_hours": 0,
+              "units": 3,
+              "prerequisite": "none"
+            }
+          ],
+          "total": {
+            "lec": 13,
+            "lab": 6,
+            "units": 15
+          }
+        },
+        {
+          "semester": "Second Semester",
+          "courses": [
+            {
+              "code": "EMCO 100",
+              "description": "INTERNSHIP/OJT (500hrs)",
+              "lec_hours": 0,
+              "lab_hours": 500,
+              "units": 9,
+              "prerequisite": "4th year standing"
+            }
+          ],
+          "total": {
+            "lec": 0,
+            "lab": 500,
+            "units": 9
+          }
+        }
+      ]
+    }
+  ],
+  "electives": [
+    "2D Animation Production",
+    "Gameplay Theory",
+    "Mobile Game Development",
+    "Digital Photography",
+    "Game Art Production",
+    "UI/UX Design and Programming",
+    "Web Systems and Technologies",
+    "Quality Consciousness, Habits and Processes",
+    "Advertising and Marketing",
+    "Business of Animation Production"
+  ],
+  "summary": {
+    "categories": [
+      {
+        "category": "Gen Education Courses",
+        "biscast_units": 36,
+        "ched_units": 57
+      },
+      {
+        "category": "Common Computing Courses",
+        "biscast_units": 18,
+        "ched_units": 18
+      },
+      {
+        "category": "EMC Core Courses",
+        "biscast_units": 27,
+        "ched_units": 27
+      },
+      {
+        "category": "EMC Professional Course",
+        "biscast_units": 33,
+        "ched_units": 27
+      },
+      {
+        "category": "EMC Professional Elective Course",
+        "biscast_units": 21,
+        "ched_units": 9
+      },
+      {
+        "category": "Capstone Project",
+        "biscast_units": 6,
+        "ched_units": 6
+      },
+      {
+        "category": "Internship",
+        "biscast_units": 9,
+        "ched_units": 9
+      },
+      {
+        "category": "PE & NSTP Institutional Courses",
+        "biscast_units": 14,
+        "ched_units": 14
+      }
+    ],
+    "total_units": {
+      "biscast": 168,
+      "ched": 167
+    }
+  }
+}

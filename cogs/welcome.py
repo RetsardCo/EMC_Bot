@@ -30,8 +30,13 @@ class Welcome(commands.Cog):
             title="Welcome to BSEMC!",
             description=(
                 f"Welcome, {member.mention}!\n\n"
-                "Please complete the community questions first. Once your role is assigned, "
-                "use the **Introduce Yourself** button to set your nickname and unlock the server."
+                "Please complete your setup first by typing **/setup**.\n\n"
+                "Students: enter your full name, specialization, and year. "
+                "EM Bot will set your nickname and assign your BISCAST, Student, "
+                "and DAT/GD year roles.\n\n"
+                "Verified faculty members with the **!Faculty** role: use **/setup** "
+                "to complete the faculty form.\n\n"
+                "After setup is complete, you can explore and participate in the server."
             ),
             color=discord.Color.blurple(),
         )

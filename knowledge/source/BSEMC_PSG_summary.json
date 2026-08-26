@@ -1,0 +1,92 @@
+{
+    "cmo_details": {
+        "number": "02",
+        "series": "2014",
+        "subject": "POLICIES, STANDARDS AND GUIDELINES FOR BACHELOR OF SCIENCE IN ENTERTAINMENT AND MULTIMEDIA COMPUTING (BS EMC) PROGRAM",
+        "date_approved": "January 13, 2014"
+    },
+    "program_specifications": {
+        "degree_name": "Bachelor of Science in Entertainment and Multimedia Computing (BSEMC)",
+        "specializations": [
+            {
+                "name": "Game Development",
+                "objectives": "to prepare students to be game development professionals with specialized knowledge, competencies and values in designing, developing, and producing digital games and / or tools, and in managing game development projects for various applications.",
+                "careers": [
+                    "Lead Game Programmer/Developer / Tools Developer",
+                    "Associate Technical Director / Game Designer",
+                    "Associate Game Quality Assurance Specialist",
+                    "Senior Interactive Software Developer",
+                    "Associate Game Producer",
+                    "Senior Game Sound Engineer",
+                    "Graphics Programmer",
+                    "Associate Business Development Specialist for Entertainment and Multimedia Industries"
+                ]
+            },
+            {
+                "name": "Digital Animation-Technology",
+                "objectives": "to prepare students to be digital animation professionals who are equipped with both creative and technical knowledge, skills, and values in conceptualizing, designing and producing animation products and solutions, and in managing such projects over different technology platforms.",
+                "careers": [
+                    "Creative Programmer",
+                    "Technical Animator",
+                    "Creative Content Developer",
+                    "Ad Builders",
+                    "Technical Director for Modelling/Rigging / Lighting",
+                    "Animation Quality Assurance Specialist",
+                    "Technical Director for Game Art",
+                    "Digital 2D or 3D Animation Content Producer",
+                    "Digital 2D or 3D Production Designer",
+                    "Associate Business Development Specialist for Entertainment and Multimedia Industries"
+                ]
+            }
+        ],
+        "allied_fields": [
+            "Computer Science",
+            "Information Technology",
+            "Computer Engineering",
+            "Multimedia Computing",
+            "Game Design and Development",
+            "Digital Animation Technology"
+        ]
+    },
+    "curriculum_summary": {
+        "total_units": 167,
+        "components": [
+            {
+                "name": "General Education Courses",
+                "units": 57
+            },
+            {
+                "name": "Common Computing Courses",
+                "units": 18
+            },
+            {
+                "name": "EMC Core Courses",
+                "units": 27
+            },
+            {
+                "name": "EMC Professional Courses",
+                "units": 27
+            },
+            {
+                "name": "EMC Professional Elective Courses",
+                "units": 9
+            },
+            {
+                "name": "Capstone Project",
+                "units": 6
+            },
+            {
+                "name": "Internship",
+                "units": 9
+            },
+            {
+                "name": "Physical Education",
+                "units": 8
+            },
+            {
+                "name": "NSTP",
+                "units": 6
+            }
+        ]
+    }
+}

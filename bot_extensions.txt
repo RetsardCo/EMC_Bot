@@ -1,0 +1,17 @@
+Add these extensions to the tuple in bot.py:
+
+    "cogs.welcome",
+    "cogs.introduction",
+    "cogs.moderation",
+    "cogs.admin",
+    "cogs.polls",
+    "cogs.automod",
+    "cogs.ai",
+    "cogs.help",
+    "cogs.feedback",
+    "cogs.knowledge",
+
+The key new one is:
+    "cogs.knowledge",
+
+Then restart the bot so the new slash commands sync.
