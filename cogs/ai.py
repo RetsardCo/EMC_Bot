@@ -62,11 +62,6 @@ OPENROUTER_FAST_MODEL = os.getenv(
     "openai/gpt-oss-20b:free",
 ).strip()
 
-OPENROUTER_LIGHTNING_MODEL = os.getenv(
-    "OPENROUTER_LIGHTNING_MODEL",
-    "nvidia/nemotron-3.5-lightning:free",
-).strip()
-
 OPENROUTER_VISION_MODEL = os.getenv(
     "OPENROUTER_VISION_MODEL",
     "google/gemma-4-31b-it:free",

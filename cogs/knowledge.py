@@ -1106,6 +1106,242 @@ def archive_generic_document(
     return True, ""
 
 
+
+def _structured_source_type(filename: str) -> str:
+    suffix = Path(filename).suffix.casefold()
+    if suffix == ".json":
+        return "json"
+    if suffix == ".csv":
+        return "csv"
+    return ""
+
+
+def repair_verified_structured_statuses() -> tuple[int, int]:
+    """
+    Repair legacy manifests where uploaded JSON/CSV was incorrectly left as DRAFT.
+    Returns (repaired, skipped).
+    """
+    manifest = load_manifest()
+    repaired = 0
+    skipped = 0
+
+    for path in SOURCE_DIR.iterdir():
+        if not path.is_file():
+            continue
+
+        source_type = _structured_source_type(path.name)
+        if not source_type:
+            continue
+
+        entry = manifest.setdefault(
+            path.name,
+            {},
+        )
+
+        status = str(
+            entry.get(
+                "status",
+                "",
+            )
+        ).casefold()
+
+        if status in {"current", "verified"}:
+            continue
+
+        # JSON/CSV is supplied structured knowledge, so it does not need
+        # the PDF draft-review workflow.
+        if source_type == "json":
+            try:
+                data = json.loads(
+                    path.read_text(
+                        encoding="utf-8",
+                    )
+                )
+            except (OSError, json.JSONDecodeError):
+                skipped += 1
+                continue
+
+            if isinstance(data, dict):
+                category = _json_category(
+                    path.name,
+                    data,
+                )
+                entry["category"] = category
+                entry["scope"] = _json_scope(data)
+
+                if category in SINGLE_CURRENT_CATEGORIES:
+                    current_exists = any(
+                        name != path.name
+                        and str(other.get("category", "")).casefold() == category
+                        and str(other.get("status", "")).casefold() == "current"
+                        for name, other in manifest.items()
+                    )
+                    entry["status"] = "verified" if current_exists else "current"
+                else:
+                    entry["status"] = "current"
+
+                repaired += 1
+                manifest[path.name] = entry
+                continue
+
+        # CSV has no nested category metadata; keep it verified unless
+        # already assigned a category/status.
+        entry["status"] = "verified"
+        entry.setdefault(
+            "category",
+            "other",
+        )
+        repaired += 1
+        manifest[path.name] = entry
+
+    save_manifest(manifest)
+    return repaired, skipped
+
+
+def set_all_verified_as_current() -> tuple[int, int, list[str]]:
+    """
+    Activate all non-archived VERIFIED structured documents.
+
+    For single-current categories, all verified documents can only be current
+    if they do not conflict in category/scope. Conflicting documents are
+    reported and left VERIFIED instead of silently choosing one.
+    """
+    manifest = load_manifest()
+    candidates: list[tuple[str, str, str]] = []
+    skipped: list[str] = []
+
+    for name, entry in manifest.items():
+        status = str(
+            entry.get(
+                "status",
+                "",
+            )
+        ).casefold()
+
+        if status != "verified":
+            continue
+
+        source_type = _structured_source_type(name)
+
+        # Do not bulk-activate PDF drafts or arbitrary files.
+        if not source_type:
+            continue
+
+        category = str(
+            entry.get(
+                "category",
+                "other",
+            )
+        ).casefold()
+
+        scope = str(
+            entry.get(
+                "scope",
+                "",
+            )
+        )
+
+        candidates.append(
+            (
+                name,
+                category,
+                scope,
+            )
+        )
+
+    # Check for single-current conflicts before changing anything.
+    groups: dict[tuple[str, str], list[str]] = {}
+    for name, category, scope in candidates:
+        if category in SINGLE_CURRENT_CATEGORIES:
+            groups.setdefault(
+                (
+                    category,
+                    scope,
+                ),
+                [],
+            ).append(name)
+
+    for key, names in groups.items():
+        if len(names) > 1:
+            skipped.extend(names)
+
+    activated = 0
+
+    for name, category, scope in candidates:
+        if name in skipped:
+            continue
+
+        entry = manifest[name]
+        entry["status"] = "current"
+        manifest[name] = entry
+        activated += 1
+
+    save_manifest(manifest)
+    return activated, len(skipped), skipped
+
+
+class ActivateAllConfirmView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=90)
+
+    @discord.ui.button(
+        label="Set All Verified as Current",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+    )
+    async def confirm(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        member = interaction.user
+        if not isinstance(member, discord.Member) or not is_staff(member):
+            await interaction.response.edit_message(
+                content="1. Only Moderator and EMC Faculty can change knowledge status.",
+                view=None,
+            )
+            return
+
+        activated, skipped_count, skipped = set_all_verified_as_current()
+
+        details = ""
+        if skipped:
+            details = (
+                "\n\n3. **Not activated because of single-current conflicts:**\n"
+                + "\n".join(
+                    f"• `{name}`"
+                    for name in skipped[:10]
+                )
+            )
+            if len(skipped) > 10:
+                details += f"\n• ...and {len(skipped) - 10} more"
+
+        await interaction.response.edit_message(
+            content=(
+                f"✅ Activated **{activated}** verified structured document(s) as CURRENT.\n\n"
+                f"2. Conflicts skipped: **{skipped_count}**."
+                f"{details}\n\n"
+                "PDF/MD drafts were not activated."
+            ),
+            view=None,
+        )
+
+    @discord.ui.button(
+        label="Cancel",
+        style=discord.ButtonStyle.secondary,
+        emoji="✖️",
+    )
+    async def cancel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        await interaction.response.edit_message(
+            content="Activation cancelled.",
+            view=None,
+        )
+
+
 def generic_manager_documents() -> list[Path]:
     manifest = load_manifest()
     results: list[Path] = []
@@ -1617,6 +1853,84 @@ class GenericKnowledgeManagerView(discord.ui.View):
             self.add_item(
                 GenericKnowledgeSelect()
             )
+
+    @discord.ui.button(
+        label="Set All Verified as Current",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        row=1,
+    )
+    async def activate_all(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        member = interaction.user
+
+        if not isinstance(member, discord.Member) or not is_staff(member):
+            await interaction.response.send_message(
+                "1. Only Moderator and EMC Faculty can manage knowledge.",
+                ephemeral=True,
+            )
+            return
+
+        repaired, skipped = repair_verified_structured_statuses()
+
+        message = (
+            "📚 **Activate Verified Knowledge**\n\n"
+            "This will make all eligible **verified JSON/CSV** documents CURRENT.\n\n"
+            "PDF/Markdown drafts will not be activated."
+        )
+
+        if repaired:
+            message += (
+                f"\n\nI also repaired **{repaired}** legacy JSON/CSV status record(s) "
+                "that were incorrectly marked as DRAFT."
+            )
+
+        if skipped:
+            message += (
+                f"\n\n**{skipped}** structured file(s) could not be repaired."
+            )
+
+        await interaction.response.send_message(
+            message,
+            view=ActivateAllConfirmView(),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="Repair JSON/CSV Status",
+        style=discord.ButtonStyle.secondary,
+        emoji="🔧",
+        row=1,
+    )
+    async def repair_status(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        member = interaction.user
+
+        if not isinstance(member, discord.Member) or not is_staff(member):
+            await interaction.response.send_message(
+                "1. Only Moderator and EMC Faculty can repair knowledge status.",
+                ephemeral=True,
+            )
+            return
+
+        repaired, skipped = repair_verified_structured_statuses()
+
+        await interaction.response.send_message(
+            (
+                f"1. Repaired **{repaired}** JSON/CSV status record(s).\n\n"
+                f"2. Skipped: **{skipped}**.\n\n"
+                "3. PDF/Markdown drafts were not changed."
+            ),
+            ephemeral=True,
+        )
+
+
 
 
 class CurriculumActionView(discord.ui.View):
@@ -2681,7 +2995,9 @@ class Knowledge(commands.Cog):
 
         if drafts:
             await interaction.followup.send(
-                "📋 **Pending Document Review**",
+                "📋 **Pending Document Review**\n\n"
+                "These are AI-extracted PDF drafts. They are stored as Markdown "
+                "under `knowledge/drafts/` and are **not used by `/ask` until approved**.",
                 view=KnowledgeManagerView(),
                 ephemeral=True,
             )
@@ -2864,6 +3180,11 @@ class Knowledge(commands.Cog):
                     {}
                 )
                 entry["category"] = detected_category
+
+                # Structured JSON/CSV is never a PDF draft.
+                if name.endswith(".json") or name.endswith(".csv"):
+                    if detected_category not in SINGLE_CURRENT_CATEGORIES:
+                        entry["status"] = "current"
                 entry.setdefault(
                     "scope",
                     str(
