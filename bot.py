@@ -40,6 +40,12 @@ class EMBot(commands.Bot):
             help_command=None,
         )
 
+        logger.info(
+            "Discord intents: members=%s message_content=%s",
+            intents.members,
+            intents.message_content,
+        )
+
     async def setup_hook(self) -> None:
         extensions = (
             "cogs.welcome",
@@ -120,6 +126,10 @@ class EMBot(commands.Bot):
                 "  - %s (%s)",
                 guild.name,
                 guild.id,
+            )
+            logger.info(
+                "    system_channel=%s",
+                getattr(guild.system_channel, "id", None),
             )
 
 

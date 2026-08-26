@@ -62,6 +62,11 @@ OPENROUTER_FAST_MODEL = os.getenv(
     "openai/gpt-oss-20b:free",
 ).strip()
 
+OPENROUTER_LIGHTNING_MODEL = os.getenv(
+    "OPENROUTER_LIGHTNING_MODEL",
+    "nvidia/nemotron-3.5-lightning:free",
+).strip()
+
 OPENROUTER_VISION_MODEL = os.getenv(
     "OPENROUTER_VISION_MODEL",
     "google/gemma-4-31b-it:free",
@@ -1245,14 +1250,14 @@ def provider_status(
 
 
 def build_status_embed() -> discord.Embed:
-    embed = discord.Embed(
-        title="🤖 EM Bot AI Status",
-        description=(
-            "Session-only statistics. "
-            "Counters reset when EM Bot restarts."
-        ),
-        color=discord.Color.blurple(),
-    )
+    """
+    Build the AI status panel without allowing one missing environment
+    variable or malformed statistic to crash /ai_status.
+    """
+    lightning_model = os.getenv(
+        "OPENROUTER_LIGHTNING_MODEL",
+        "nvidia/nemotron-3.5-lightning:free",
+    ).strip() or "nvidia/nemotron-3.5-lightning:free"
 
     providers = (
         (
@@ -1283,7 +1288,7 @@ def build_status_embed() -> discord.Embed:
             "OpenRouter Lightning",
             "openrouter_lightning",
             OPENROUTER_API_KEY,
-            OPENROUTER_LIGHTNING_MODEL,
+            lightning_model,
         ),
         (
             "OpenRouter Vision",
@@ -1299,51 +1304,74 @@ def build_status_embed() -> discord.Embed:
         ),
     )
 
-    for (
-        label,
-        key,
-        api_key,
-        model,
-    ) in providers:
-        state = provider_stats[key]
-        configured = bool(api_key)
+    embed = discord.Embed(
+        title="🤖 EM Bot AI Status",
+        description=(
+            "Session-only statistics. "
+            "Counters reset when EM Bot restarts."
+        ),
+        color=discord.Color.blurple(),
+    )
+
+    for label, key, api_key, model in providers:
+        try:
+            state = provider_stats[key]
+            configured = bool(api_key)
+
+            attempts = int(state.get("attempts", 0))
+            success = int(state.get("success", 0))
+            failures = int(state.get("failures", 0))
+
+            embed.add_field(
+                name=f"{label} — {provider_status(key, configured)}",
+                value=(
+                    f"Model: `{model or '—'}`\n"
+                    f"Attempts: **{attempts}**\n"
+                    f"Success: **{success}**\n"
+                    f"Failures: **{failures}**"
+                ),
+                inline=False,
+            )
+        except Exception as error:
+            logger.exception(
+                "Failed to build AI status for provider %s: %s",
+                label,
+                error,
+            )
+            embed.add_field(
+                name=f"{label} — ⚠️ Status error",
+                value=(
+                    f"Model: `{model or '—'}`\n"
+                    "Attempts: **?**\n"
+                    "Success: **?**\n"
+                    "Failures: **?**"
+                ),
+                inline=False,
+            )
+
+    try:
+        routing_lines = [
+            f"General: **{int(route_counts.get('general', 0))}**",
+            f"Coding: **{int(route_counts.get('coding', 0))}**",
+            f"Reasoning: **{int(route_counts.get('reasoning', 0))}**",
+            f"Fast: **{int(route_counts.get('fast', 0))}**",
+            f"Agent: **{int(route_counts.get('agent', 0))}**",
+            f"Vision: **{int(route_counts.get('vision', 0))}**",
+        ]
 
         embed.add_field(
-            name=(
-                f"{label} — "
-                f"{provider_status(key, configured)}"
-            ),
-            value=(
-                f"Model: `{model or '—'}`\n"
-                f"Attempts: **{state['attempts']}**\n"
-                f"Success: **{state['success']}**\n"
-                f"Failures: **{state['failures']}**"
-            ),
+            name="🧭 Local Router",
+            value="\n".join(routing_lines),
             inline=False,
         )
-
-    routing_lines = [
-        f"General: **{route_counts['general']}**",
-        f"Coding: **{route_counts['coding']}**",
-        f"Reasoning: **{route_counts['reasoning']}**",
-        f"Fast: **{route_counts['fast']}**",
-        f"Agent: **{route_counts['agent']}**",
-        f"Vision: **{route_counts['vision']}**",
-    ]
-
-    embed.add_field(
-        name="🧭 Local Router",
-        value="\n".join(routing_lines),
-        inline=False,
-    )
+    except Exception:
+        logger.exception("Failed to build local router status.")
 
     embed.add_field(
         name="📚 Official Sources",
         value=(
-            f"Channels configured: "
-            f"**{len(AI_SOURCE_CHANNEL_IDS)}**\n"
-            f"Lookback per channel: "
-            f"**{AI_SOURCE_LOOKBACK_MESSAGES} messages**"
+            f"Channels configured: **{len(AI_SOURCE_CHANNEL_IDS)}**\n"
+            f"Lookback per channel: **{AI_SOURCE_LOOKBACK_MESSAGES} messages**"
         ),
         inline=False,
     )
@@ -1351,15 +1379,15 @@ def build_status_embed() -> discord.Embed:
     embed.add_field(
         name="🧠 Memory",
         value=(
-            f"Active conversations: "
-            f"**{len(history)}**\n"
-            f"Max turns/user: "
-            f"**{AI_MAX_HISTORY_TURNS}**"
+            f"Active conversations: **{len(history)}**\n"
+            f"Max turns/user: **{AI_MAX_HISTORY_TURNS}**"
         ),
         inline=False,
     )
 
     return embed
+
+
 
 
 def staff_only():
@@ -1937,10 +1965,46 @@ class AI(commands.Cog):
         self,
         interaction: discord.Interaction,
     ) -> None:
-        await interaction.response.send_message(
-            embed=build_status_embed(),
-            ephemeral=True,
-        )
+        try:
+            embed = build_status_embed()
+
+            if interaction.response.is_done():
+                await interaction.followup.send(
+                    embed=embed,
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=embed,
+                    ephemeral=True,
+                )
+
+        except Exception as error:
+            logger.exception(
+                "AI status command failed: %s",
+                error,
+            )
+
+            message = (
+                "1. The AI status panel encountered an internal error.\n\n"
+                "2. Check the console for the detailed traceback."
+            )
+
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(
+                        message,
+                        ephemeral=True,
+                    )
+                else:
+                    await interaction.response.send_message(
+                        message,
+                        ephemeral=True,
+                    )
+            except discord.HTTPException:
+                logger.exception(
+                    "Failed to send AI status error response."
+                )
 
 
 async def setup(

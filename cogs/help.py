@@ -16,7 +16,7 @@ COMMAND_DESCRIPTIONS = {
     "ask": "Ask EM Bot an AI question; you can also attach an image for analysis.",
     "setup": "Open your introduction process. Student and verified-faculty flows are different.",
     "feedback": "Send a feedback message or suggestion to the private staff feedback channel.",
-"knowledge": "Staff: open the general knowledge manager, activate verified documents, and review PDF drafts.",
+"knowledge": "Staff: open the general knowledge manager and manage document status.",
     "knowledge_add": "Staff: upload an official PDF or CSV document for EM Bot to read.",
 "knowledge_list": "Staff: list official documents stored in EM Bot knowledge.",
 "knowledge_export": "Staff: export the complete knowledge base as a ZIP backup.",

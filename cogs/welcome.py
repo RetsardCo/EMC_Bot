@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import logging
+import random
+
 import discord
 from discord.ext import commands
 
@@ -7,7 +12,16 @@ from .common import (
     WELCOME_CHANNEL_ID,
     add_role_if_missing,
     get_text_channel,
-    is_introduced,
+)
+
+logger = logging.getLogger("em-bot.welcome")
+
+WELCOME_HEADLINES = (
+    "✨ Hey, {name}, congratulations on joining the official BSEMC Discord server!",
+    "🎉 Congrats, {name}, on joining the official BSEMC Discord server!",
+    "🚀 Welcome aboard, {name}! You're now part of the official BSEMC Discord server!",
+    "🌟 Great to have you here, {name}! Welcome to the official BSEMC Discord server!",
+    "👋 Hey, {name}! Congratulations on joining the official BSEMC Discord server!",
 )
 
 
@@ -15,53 +29,233 @@ class Welcome(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    async def _resolve_welcome_channel(
+        self,
+        member: discord.Member,
+    ) -> discord.TextChannel | None:
+        """
+        Resolve the welcome channel in this order:
+
+        1. Explicit WELCOME_CHANNEL_ID from .env, when configured.
+        2. A text channel named exactly "welcome".
+        3. Common welcome-channel names such as "welcome-channel".
+        4. The server system channel.
+
+        This means WELCOME_CHANNEL_ID can safely remain 0/blank when the
+        server has a #welcome channel.
+        """
+        # 1. Explicit channel ID wins when configured.
+        if WELCOME_CHANNEL_ID:
+            channel = await get_text_channel(
+                member.guild,
+                WELCOME_CHANNEL_ID,
+            )
+            if channel is not None:
+                logger.info(
+                    "Using configured welcome channel #%s (%s).",
+                    channel.name,
+                    channel.id,
+                )
+                return channel
+
+            logger.warning(
+                "Configured WELCOME_CHANNEL_ID=%s was not found/usable in guild %s.",
+                WELCOME_CHANNEL_ID,
+                member.guild.id,
+            )
+
+        # 2. Exact #welcome match.
+        normalized_names = {
+            "welcome",
+            "welcome-channel",
+            "welcome_channel",
+            "welcomes",
+        }
+
+        for channel in member.guild.text_channels:
+            name = channel.name.casefold().strip()
+
+            if name in normalized_names:
+                logger.info(
+                    "Auto-detected welcome channel #%s (%s).",
+                    channel.name,
+                    channel.id,
+                )
+                return channel
+
+        # 3. Fuzzy fallback for channels containing "welcome".
+        for channel in member.guild.text_channels:
+            name = channel.name.casefold().strip()
+
+            if "welcome" in name:
+                logger.info(
+                    "Auto-detected welcome channel by name #%s (%s).",
+                    channel.name,
+                    channel.id,
+                )
+                return channel
+
+        # 4. Server system channel.
+        system_channel = member.guild.system_channel
+        if isinstance(system_channel, discord.TextChannel):
+            logger.warning(
+                "No #welcome channel found. Falling back to system channel "
+                "#%s (%s).",
+                system_channel.name,
+                system_channel.id,
+            )
+            return system_channel
+
+        logger.error(
+            "No usable welcome channel found in guild %s (%s). "
+            "Set WELCOME_CHANNEL_ID or create a #welcome channel.",
+            member.guild.name,
+            member.guild.id,
+        )
+        return None
+
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
         if member.bot:
+            logger.info(
+                "Ignoring bot member join: %s (%s)",
+                member,
+                member.id,
+            )
             return
 
-        await add_role_if_missing(member, UNINTRODUCED_ROLE_NAME)
+        logger.info(
+            "WELCOME EVENT: %s (%s) joined %s (%s).",
+            member,
+            member.id,
+            member.guild.name,
+            member.guild.id,
+        )
 
-        channel = await get_text_channel(member.guild, WELCOME_CHANNEL_ID)
-        if not channel:
+        try:
+            added = await add_role_if_missing(
+                member,
+                UNINTRODUCED_ROLE_NAME,
+            )
+            logger.info(
+                "WELCOME ROLE: attempted Unintroduced for %s; result=%s.",
+                member,
+                added,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to add %s role to %s.",
+                UNINTRODUCED_ROLE_NAME,
+                member,
+            )
+
+        channel = await self._resolve_welcome_channel(member)
+        if channel is None:
             return
 
         embed = discord.Embed(
-            title="Welcome to BSEMC!",
+            title=random.choice(WELCOME_HEADLINES).format(
+                name=member.display_name,
+            ),
             description=(
-                f"Welcome, {member.mention}!\n\n"
-                "Please complete your setup first by typing **/setup**.\n\n"
-                "Students: enter your full name, specialization, and year. "
-                "EM Bot will set your nickname and assign your BISCAST, Student, "
-                "and DAT/GD year roles.\n\n"
-                "Verified faculty members with the **!Faculty** role: use **/setup** "
-                "to complete the faculty form.\n\n"
-                "After setup is complete, you can explore and participate in the server."
+                "Please complete the steps below to get started.\n\n"
+                "**1. Set up your profile**\n\n"
+                "Type **/setup** and complete the form.\n\n"
+                "**2. Students**\n\n"
+                "Enter your full name, specialization, and year. "
+                "EM Bot will set your nickname and assign your BISCAST, "
+                "Student, and DAT/GD year roles.\n\n"
+                "**3. Verified faculty**\n\n"
+                "If you were manually given the **!Faculty** role, use **/setup** "
+                "to complete the Faculty form.\n\n"
+                "**4. After setup**\n\n"
+                "Once your introduction is complete, you can explore and "
+                "participate normally in the server."
             ),
             color=discord.Color.blurple(),
         )
-        embed.set_thumbnail(url=member.display_avatar.url)
-        await channel.send(embed=embed)
+
+        try:
+            embed.set_thumbnail(
+                url=member.display_avatar.url,
+            )
+
+            sent = await channel.send(
+                content=member.mention,
+                embed=embed,
+            )
+
+            logger.info(
+                "WELCOME SENT: message=%s channel=%s (%s) member=%s.",
+                sent.id,
+                channel.name,
+                channel.id,
+                member.id,
+            )
+
+        except discord.Forbidden:
+            logger.exception(
+                "WELCOME FAILED: missing permission to send in #%s (%s) "
+                "for member %s (%s).",
+                channel.name,
+                channel.id,
+                member,
+                member.id,
+            )
+        except discord.HTTPException:
+            logger.exception(
+                "WELCOME FAILED: Discord HTTP error sending in #%s (%s) "
+                "for member %s (%s).",
+                channel.name,
+                channel.id,
+                member,
+                member.id,
+            )
+        except Exception:
+            logger.exception(
+                "WELCOME FAILED: unexpected error for member %s (%s).",
+                member,
+                member.id,
+            )
 
     async def send_introduction_complete_welcome(
         self,
         member: discord.Member,
         nickname: str,
     ) -> None:
-        channel = await get_text_channel(member.guild, INTRO_COMPLETE_CHANNEL_ID)
+        channel = await get_text_channel(
+            member.guild,
+            INTRO_COMPLETE_CHANNEL_ID,
+        )
         if not channel:
+            logger.warning(
+                "INTRO COMPLETE: channel %s unavailable in guild %s.",
+                INTRO_COMPLETE_CHANNEL_ID,
+                member.guild.id,
+            )
             return
 
         embed = discord.Embed(
             title="Welcome to BSEMC!",
             description=(
                 f"Welcome, {member.mention}!\n\n"
-                "Your introduction is complete, and you can now explore and participate in the server.\n\n"
+                "Your introduction is complete, and you can now explore and participate "
+                "in the server.\n\n"
                 f"**Nickname:** `{nickname}`"
             ),
             color=discord.Color.green(),
         )
-        await channel.send(embed=embed)
+
+        try:
+            await channel.send(
+                embed=embed,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send introduction-complete welcome for %s (%s).",
+                member,
+                member.id,
+            )
 
 
 async def setup(bot: commands.Bot) -> None:
