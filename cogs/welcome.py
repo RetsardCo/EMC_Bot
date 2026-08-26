@@ -258,5 +258,90 @@ class Welcome(commands.Cog):
             )
 
 
+    @commands.hybrid_command(
+        name="welcome_test",
+        description="Staff: test the automatic welcome channel.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def welcome_test(
+        self,
+        ctx: commands.Context,
+    ) -> None:
+        if not ctx.guild or not isinstance(ctx.author, discord.Member):
+            await ctx.send(
+                "This command can only be used inside a server.",
+                ephemeral=True,
+            )
+            return
+
+        channel = await self._resolve_welcome_channel(ctx.guild.get_member(ctx.author.id) or ctx.author)
+
+        if channel is None:
+            await ctx.send(
+                "1. No welcome channel could be detected.\n\n"
+                "2. Create a `#welcome` channel or set `WELCOME_CHANNEL_ID` in `.env`.",
+                ephemeral=True,
+            )
+            return
+
+        if not channel.permissions_for(ctx.guild.me).send_messages:
+            await ctx.send(
+                f"1. I found `{channel.name}`, but I do not have **Send Messages** permission there.\n\n"
+                f"2. Channel ID: `{channel.id}`",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title=random.choice(WELCOME_HEADLINES).format(
+                name=ctx.author.display_name,
+            ),
+            description=(
+                "This is a **welcome-system test**.\n\n"
+                "The automatic welcome channel detection is working."
+            ),
+            color=discord.Color.blurple(),
+        )
+        embed.set_thumbnail(
+            url=ctx.author.display_avatar.url,
+        )
+
+        try:
+            message = await channel.send(
+                content=ctx.author.mention,
+                embed=embed,
+            )
+        except discord.Forbidden:
+            logger.exception(
+                "WELCOME TEST FAILED: permission denied in #%s (%s).",
+                channel.name,
+                channel.id,
+            )
+            await ctx.send(
+                f"1. Permission denied in `{channel.name}`.\n\n"
+                f"2. Channel ID: `{channel.id}`",
+                ephemeral=True,
+            )
+            return
+        except discord.HTTPException as error:
+            logger.exception(
+                "WELCOME TEST FAILED: Discord HTTP error: %s",
+                error,
+            )
+            await ctx.send(
+                f"1. Discord rejected the message: `{error}`.",
+                ephemeral=True,
+            )
+            return
+
+        await ctx.send(
+            f"1. Welcome channel detected: `{channel.name}`.\n\n"
+            f"2. Test message sent successfully.\n\n"
+            f"3. Message ID: `{message.id}`.",
+            ephemeral=True,
+        )
+
+
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Welcome(bot))

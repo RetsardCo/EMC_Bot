@@ -45,6 +45,11 @@ class EMBot(commands.Bot):
             intents.members,
             intents.message_content,
         )
+        if not intents.members:
+            logger.error(
+                "WARNING: Server Members Intent is disabled in bot.py. "
+                "on_member_join cannot work correctly."
+            )
 
     async def setup_hook(self) -> None:
         extensions = (
@@ -119,6 +124,10 @@ class EMBot(commands.Bot):
         logger.info(
             "Connected to %d server(s).",
             len(self.guilds),
+        )
+        logger.info(
+            "Welcome cog loaded: %s",
+            "Welcome" in self.cogs,
         )
 
         for guild in self.guilds:
