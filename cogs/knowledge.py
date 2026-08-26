@@ -1609,14 +1609,163 @@ class GenericKnowledgeSelect(discord.ui.Select):
         )
 
 
+
+def set_all_verified_as_current() -> tuple[int, int, list[str]]:
+    manifest = load_manifest()
+    candidates: list[tuple[str, str, str]] = []
+    conflicts: list[str] = []
+
+    for filename, entry in manifest.items():
+        status = str(entry.get("status", "")).casefold()
+        source_type = str(entry.get("source_type", "")).casefold()
+
+        if status != "verified" or source_type not in {"json", "csv"}:
+            continue
+
+        category = str(entry.get("category", "other")).casefold()
+        scope = str(entry.get("scope", ""))
+        candidates.append((filename, category, scope))
+
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for filename, category, scope in candidates:
+        if category in SINGLE_CURRENT_CATEGORIES:
+            grouped.setdefault((category, scope), []).append(filename)
+
+    for filenames in grouped.values():
+        if len(filenames) > 1:
+            conflicts.extend(filenames)
+
+    activated = 0
+    for filename, _, _ in candidates:
+        if filename in conflicts:
+            continue
+        manifest[filename]["status"] = "current"
+        activated += 1
+
+    save_manifest(manifest)
+    return activated, len(conflicts), conflicts
+
+
+class SetAllCurrentConfirmView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=90)
+
+    @discord.ui.button(
+        label="Set All Verified as Current",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+    )
+    async def confirm(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        member = interaction.user
+
+        if not isinstance(member, discord.Member) or not is_staff(member):
+            await interaction.response.edit_message(
+                content="1. Only Moderator and EMC Faculty can change knowledge status.",
+                view=None,
+            )
+            return
+
+        activated, conflict_count, conflicts = set_all_verified_as_current()
+
+        lines = [
+            f"✅ **Activated:** {activated}",
+            f"⚠️ **Conflicts skipped:** {conflict_count}",
+            "",
+            "Only verified JSON/CSV documents were activated.",
+            "PDF/Markdown drafts were not changed.",
+        ]
+
+        if conflicts:
+            lines.append("")
+            lines.append("**Conflicting documents:**")
+            lines.extend(
+                f"• `{name}`"
+                for name in conflicts[:10]
+            )
+            if len(conflicts) > 10:
+                lines.append(
+                    f"• ...and {len(conflicts) - 10} more"
+                )
+
+        await interaction.response.edit_message(
+            content="\n".join(lines),
+            view=None,
+        )
+
+    @discord.ui.button(
+        label="Cancel",
+        style=discord.ButtonStyle.secondary,
+        emoji="✖️",
+    )
+    async def cancel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        await interaction.response.edit_message(
+            content="Activation cancelled.",
+            view=None,
+        )
+
+
 class GenericKnowledgeManagerView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=300)
 
         if generic_manager_documents():
-            self.add_item(
-                GenericKnowledgeSelect()
+            self.add_item(GenericKnowledgeSelect())
+
+    @discord.ui.button(
+        label="Set All Verified as Current",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        row=1,
+    )
+    async def set_all_current(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        member = interaction.user
+
+        if not isinstance(member, discord.Member) or not is_staff(member):
+            await interaction.response.send_message(
+                "1. Only Moderator and EMC Faculty can manage knowledge.",
+                ephemeral=True,
             )
+            return
+
+        verified_count = sum(
+            1
+            for entry in load_manifest().values()
+            if str(entry.get("status", "")).casefold() == "verified"
+            and str(entry.get("source_type", "")).casefold() in {"json", "csv"}
+        )
+
+        if verified_count == 0:
+            await interaction.response.send_message(
+                "1. There are no verified JSON/CSV documents to activate.\n\n"
+                "2. PDF/Markdown drafts must be reviewed separately.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            (
+                "📚 **Activate Verified Knowledge**\n\n"
+                f"Found **{verified_count}** verified JSON/CSV document(s).\n\n"
+                "Set all eligible verified structured documents to **CURRENT**?\n\n"
+                "PDF/Markdown drafts will **not** be activated."
+            ),
+            view=SetAllCurrentConfirmView(),
+            ephemeral=True,
+        )
+
+
 
 
 class CurriculumActionView(discord.ui.View):
@@ -2700,7 +2849,7 @@ class Knowledge(commands.Cog):
                     "📚 **Knowledge Manager**\n\n"
                     f"**Documents:** {len(all_docs)}\n"
                     f"**Current:** {len(current)}\n\n"
-                    "Select any official document to manage its category and status."
+                    "Select any official document to manage its category and status.\n"                    "Use **✅ Set All Verified as Current** to activate eligible JSON/CSV files at once."
                 ),
                 view=GenericKnowledgeManagerView(),
                 ephemeral=True,
