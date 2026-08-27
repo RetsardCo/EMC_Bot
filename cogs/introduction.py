@@ -157,104 +157,186 @@ async def apply_nickname(member: discord.Member, nickname: str, *, reason: str) 
                 return False, "The nickname change was not confirmed by Discord. Please check EM Bot's role position and Manage Nicknames permission."
     return True, ""
 
+async def safe_followup(
+    interaction: discord.Interaction,
+    content: str,
+) -> None:
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(content, ephemeral=True)
+        else:
+            await interaction.response.send_message(content, ephemeral=True)
+    except (discord.NotFound, discord.HTTPException):
+        pass
+
+
 class StudentIntroductionModal(discord.ui.Modal, title="Student Introduction"):
     full_name = discord.ui.TextInput(label="Full Name", placeholder="Juan Dela Cruz", required=True, min_length=2, max_length=80)
     specialization = discord.ui.TextInput(label="Specialization", placeholder="DAT or GD", required=True, min_length=2, max_length=32)
     year = discord.ui.TextInput(label="Year", placeholder="1st Year, 2nd Year, 3rd Year, or 4th Year", required=True, min_length=1, max_length=20)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            return
+
         member = interaction.user
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message("This form can only be used inside the server.", ephemeral=True)
+            await safe_followup(
+                interaction,
+                "This form can only be used inside the server.",
+            )
             return
+
         if not has_role(member, STUDENT_ROLE_NAME):
-            await interaction.response.send_message(f"You need the **{STUDENT_ROLE_NAME}** role to use the student form.", ephemeral=True)
+            await safe_followup(
+                interaction,
+                f"You need the **{STUDENT_ROLE_NAME}** role to use the student form.",
+            )
             return
+
         if is_introduced(member):
-            await interaction.response.send_message("You have already completed your introduction. Future nickname changes must be done manually by Moderator or EMC Faculty staff.", ephemeral=True)
+            await safe_followup(
+                interaction,
+                "You have already completed your introduction. "
+                "Future nickname changes must be done manually by Moderator or EMC Faculty staff.",
+            )
             return
 
         specialization = normalize_specialization(self.specialization.value)
         year = normalize_year(self.year.value)
-        if not specialization:
-            await interaction.response.send_message("Specialization must be **DAT** or **GD**.", ephemeral=True)
-            return
-        if not year:
-            await interaction.response.send_message("Year must be **1st Year**, **2nd Year**, **3rd Year**, or **4th Year**.", ephemeral=True)
-            return
 
-        nickname = build_nickname(self.full_name.value, "student", specialization, year)
-        if len(nickname) > MAX_NICKNAME_LENGTH:
-            await interaction.response.send_message(
-                f"Your nickname is {len(nickname)} characters. Discord allows a maximum of {MAX_NICKNAME_LENGTH}. Please enter a shorter name.",
-                ephemeral=True,
+        if not specialization:
+            await safe_followup(
+                interaction,
+                "Specialization must be **DAT** or **GD**.",
             )
             return
 
-        ok, err = await apply_nickname(member, nickname, reason="EM Bot student introduction")
-        if not ok:
-            await interaction.response.send_message(f"1. {err}", ephemeral=True)
+        if not year:
+            await safe_followup(
+                interaction,
+                "Year must be **1st Year**, **2nd Year**, **3rd Year**, or **4th Year**.",
+            )
             return
 
-        ok, err = await assign_student_roles(member, specialization, year)
-        if not ok:
-            # Rollback nickname if role completion fails.
-            try:
-                await member.edit(nick=member.nick, reason="EM Bot onboarding rollback")
-            except (discord.Forbidden, discord.HTTPException):
-                pass
-            await interaction.response.send_message(f"1. Nickname changed to **{nickname}**, but onboarding could not finish.\n\n2. {err}", ephemeral=True)
+        nickname = build_nickname(
+            self.full_name.value,
+            "student",
+            specialization,
+            year,
+        )
+
+        if len(nickname) > MAX_NICKNAME_LENGTH:
+            await safe_followup(
+                interaction,
+                f"Your nickname is {len(nickname)} characters. "
+                f"Discord allows a maximum of {MAX_NICKNAME_LENGTH}. "
+                "Please enter a shorter name.",
+            )
             return
 
-        await interaction.response.send_message(
+        ok, err = await apply_nickname(
+            member,
+            nickname,
+            reason="EM Bot student introduction",
+        )
+        if not ok:
+            await safe_followup(interaction, f"1. {err}")
+            return
+
+        ok, err = await assign_student_roles(
+            member,
+            specialization,
+            year,
+        )
+        if not ok:
+            await safe_followup(
+                interaction,
+                f"1. Your nickname was changed to **{nickname}**.\n\n"
+                f"2. Onboarding could not finish.\n\n"
+                f"3. {err}",
+            )
+            return
+
+        await safe_followup(
+            interaction,
             f"1. Your nickname is now **{nickname}**.\n\n"
-            f"2. You received **{BISCAST_ROLE_NAME}**, **{STUDENT_ROLE_NAME}**, and **{YEAR_ROLE_NAMES[specialization][year]}**.\n\n"
+            f"2. You received **{BISCAST_ROLE_NAME}**, **{STUDENT_ROLE_NAME}**, "
+            f"and **{YEAR_ROLE_NAMES[specialization][year]}**.\n\n"
             "3. Your introduction is complete.",
-            ephemeral=True,
         )
 
 class FacultyIntroductionModal(discord.ui.Modal, title="Faculty Introduction"):
     full_name = discord.ui.TextInput(label="Full Name", placeholder="Juan Dela Cruz", required=True, min_length=2, max_length=80)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.HTTPException:
+            return
+
         member = interaction.user
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message("This form can only be used inside the server.", ephemeral=True)
-            return
-        if not has_role(member, PENDING_FACULTY_ROLE_NAME):
-            await interaction.response.send_message(
-                f"You need the **{PENDING_FACULTY_ROLE_NAME}** role. It is assigned manually after faculty verification.",
-                ephemeral=True,
+            await safe_followup(
+                interaction,
+                "This form can only be used inside the server.",
             )
             return
+
+        if not has_role(member, PENDING_FACULTY_ROLE_NAME):
+            await safe_followup(
+                interaction,
+                f"You need the **{PENDING_FACULTY_ROLE_NAME}** role. "
+                "It is assigned manually after faculty verification.",
+            )
+            return
+
         if is_introduced(member):
-            await interaction.response.send_message("You have already completed your introduction. Future nickname changes must be done manually by Moderator or EMC Faculty staff.", ephemeral=True)
+            await safe_followup(
+                interaction,
+                "You have already completed your introduction. "
+                "Future nickname changes must be done manually by Moderator or EMC Faculty staff.",
+            )
             return
 
-        nickname = build_nickname(self.full_name.value, "faculty")
+        nickname = build_nickname(
+            self.full_name.value,
+            "faculty",
+        )
         if len(nickname) > MAX_NICKNAME_LENGTH:
-            await interaction.response.send_message("Please enter a shorter name.", ephemeral=True)
+            await safe_followup(
+                interaction,
+                "Please enter a shorter name.",
+            )
             return
 
-        ok, err = await apply_nickname(member, nickname, reason="EM Bot faculty introduction")
+        ok, err = await apply_nickname(
+            member,
+            nickname,
+            reason="EM Bot faculty introduction",
+        )
         if not ok:
-            await interaction.response.send_message(f"1. {err}", ephemeral=True)
+            await safe_followup(interaction, f"1. {err}")
             return
 
         ok, err = await finalize_faculty(member)
         if not ok:
-            await interaction.response.send_message(
-                f"1. Nickname changed to **{nickname}**, but faculty role completion failed.\n\n2. {err}",
-                ephemeral=True,
+            await safe_followup(
+                interaction,
+                f"1. Nickname changed to **{nickname}**, but faculty role completion failed.\n\n"
+                f"2. {err}",
             )
             return
 
-        await interaction.response.send_message(
+        await safe_followup(
+            interaction,
             f"1. Your nickname is now **{nickname}**.\n\n"
             f"2. **{PENDING_FACULTY_ROLE_NAME}** was replaced with **{FACULTY_ROLE_NAME}**.\n\n"
-            f"3. **{EMC_FACULTY_ROLE_NAME}** is never assigned automatically; a trusted administrator must promote you manually.\n\n"
+            f"3. **{EMC_FACULTY_ROLE_NAME}** is never assigned automatically; "
+            "a trusted administrator must promote you manually.\n\n"
             "4. Your introduction is complete.",
-            ephemeral=True,
         )
 
 class IntroductionView(discord.ui.View):
