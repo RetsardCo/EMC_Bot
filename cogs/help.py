@@ -16,7 +16,7 @@ COMMAND_DESCRIPTIONS = {
     "ask": "Ask EM Bot an AI question; you can also attach an image for analysis.",
     "setup": "Open your introduction process. Student and verified-faculty flows are different.",
     "feedback": "Send a feedback message or suggestion to the private staff feedback channel.",
-"knowledge": "Staff: open the general knowledge manager and manage document status.",
+"knowledge": "Staff: open the general knowledge manager, activate verified documents, and review PDF drafts.",
     "knowledge_add": "Staff: upload an official PDF or CSV document for EM Bot to read.",
 "knowledge_list": "Staff: list official documents stored in EM Bot knowledge.",
 "knowledge_export": "Staff: export the complete knowledge base as a ZIP backup.",
@@ -33,6 +33,12 @@ COMMAND_DESCRIPTIONS = {
     "ban": "Ban a member from the server.",
     "purge": "Delete recent messages.",
     "ai_status": "View EM Bot AI routing and provider statistics.",
+    "attendance_start": "Staff: start a voice-participation session for a selected voice channel.",
+    "attendance_status": "Staff: view the active voice-participation session.",
+    "attendance_end": "Staff: end the active voice-participation session and summarize it.",
+    "attendance_export": "Staff: download the latest participation-session report as CSV.",
+    "activity_export": "Staff: download server and voice activity records as CSV.",
+    "daily_chat_now": "Staff: post a daily community prompt now for testing.",
 }
 
 STUDENT_COMMANDS = {
@@ -61,6 +67,12 @@ STAFF_COMMANDS = {
     "knowledge_rebuild_structured",
     "knowledge_test",
     "knowledge_test_json",
+    "attendance_start",
+    "attendance_status",
+    "attendance_end",
+    "attendance_export",
+    "activity_export",
+    "daily_chat_now",
 }
 
 

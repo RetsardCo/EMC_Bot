@@ -63,6 +63,8 @@ class EMBot(commands.Bot):
             "cogs.help",
             "cogs.feedback",
             "cogs.knowledge",
+            "cogs.activity",
+            "cogs.community",
         )
 
         for extension in extensions:

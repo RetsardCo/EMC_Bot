@@ -34,6 +34,28 @@ The bot supports different command availability for students, Faculty, Moderator
 
 Feedback is intended to be forwarded into a staff-only feedback channel.
 
+### Activity logging and voice participation
+
+- Server joins and leaves are saved as local activity records.
+- Voice joins, leaves, and channel moves are logged with observed timestamps and durations.
+- Staff can optionally mirror those logs to one or more private channels by setting `ACTIVITY_LOG_CHANNEL_IDS`.
+- Staff can use `/attendance_start`, `/attendance_status`, `/attendance_end`, and `/attendance_export` for a selected voice channel.
+- `/activity_export` downloads server and voice records as CSV.
+
+Attendance reports record observed Discord participation only. They do not infer that a person is absent merely because no voice activity was observed.
+
+### Daily community chat and holiday notices
+
+EM Bot can post one changing daily prompt about Game Development, drawing, or animation. Edit [daily_topics.json](knowledge/daily_topics.json) to add topics and prompts; the bot reads it when it posts, so changing that file does not require a bot restart.
+
+Set `DAILY_CHAT_CHANNEL_IDS` to one or more comma-separated channel IDs and `DAILY_CHAT_TIME` to the Philippine local posting time. Staff can run `/daily_chat_now` to test a prompt immediately.
+
+For nationwide holidays, EM Bot checks the Official Gazette's Nationwide Holidays page before posting to the channels in `HOLIDAY_ANNOUNCEMENT_CHANNEL_IDS`. It posts nothing if that source cannot be reached or does not identify a holiday for the date. For a school/local holiday, an authorized staff member must post this exact format in one of the configured `LOCAL_HOLIDAY_SOURCE_CHANNEL_IDS`:
+
+```text
+LOCAL_HOLIDAY: 2026-09-01 | No classes due to an approved local holiday.
+```
+
 ### Moderation
 
 The bot includes configurable protections for:
@@ -410,6 +432,24 @@ INTRO_COMPLETE_CHANNEL_ID=0
 INTRO_CHANNEL_ID=0
 MOD_LOG_CHANNEL_ID=0
 AI_CHANNEL_ID=0
+ACTIVITY_LOG_CHANNEL_IDS=
+
+# Activity and attendance
+ACTIVITY_DATA_DIR=data
+ATTENDANCE_LATE_AFTER_MINUTES=15
+
+# Community engagement
+COMMUNITY_TIMEZONE=Asia/Manila
+DAILY_CHAT_CHANNEL_IDS=
+DAILY_CHAT_TIME=09:00
+DAILY_CHAT_TOPICS_FILE=knowledge/daily_topics.json
+
+# Holiday notices
+HOLIDAY_ANNOUNCEMENT_CHANNEL_IDS=
+HOLIDAY_CHECK_TIME=06:00
+NATIONWIDE_HOLIDAY_URL=https://www.officialgazette.gov.ph/nationwide-holidays/
+LOCAL_HOLIDAY_SOURCE_CHANNEL_IDS=
+LOCAL_HOLIDAY_SOURCE_LOOKBACK_MESSAGES=200
 
 # AI providers
 GEMINI_API_KEY=
@@ -538,8 +578,10 @@ EM_Bot/
 ├── requirements.txt
 ├── cogs/
 │   ├── ai.py
+│   ├── activity.py
 │   ├── admin.py
 │   ├── automod.py
+│   ├── community.py
 │   ├── feedback.py
 │   ├── help.py
 │   ├── introduction.py

@@ -595,6 +595,24 @@ def build_source_context(sources: list[str], question: str) -> str:
     return source_text
 
 
+def source_labels(sources: list[str], question: str) -> list[str]:
+    """Return concise, user-facing labels for the evidence supplied to /ask."""
+    labels: list[str] = []
+    for source in sources:
+        match = re.search(r"SOURCE CHANNEL: #([^\n]+)", source)
+        if match:
+            labels.append(f"Discord #{match.group(1).strip()}")
+
+    structured = retrieve_structured_curriculum(question) if retrieve_structured_curriculum else []
+    generic = retrieve_verified_json_knowledge(question) if retrieve_verified_json_knowledge else []
+    for source in [*structured, *generic]:
+        match = re.search(r"^SOURCE: ([^\n]+)", source, flags=re.MULTILINE)
+        if match:
+            labels.append(match.group(1).strip())
+
+    return list(dict.fromkeys(labels))[:4]
+
+
 def guess_mime_type(attachment: discord.Attachment) -> str:
     if attachment.content_type:
         return attachment.content_type
@@ -1917,6 +1935,10 @@ class AI(commands.Cog):
         answer = normalize_numbered_answer(
             answer
         )
+
+        labels = source_labels(sources, question)
+        if labels:
+            answer = answer.rstrip() + "\n\nSource(s): " + "; ".join(labels)
 
         history[
             interaction.user.id

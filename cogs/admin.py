@@ -50,6 +50,8 @@ class Admin(commands.Cog):
             )
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         try:
             await member.edit(
                 nick=nickname,
@@ -58,17 +60,17 @@ class Admin(commands.Cog):
                     f"{interaction.user}"
                 ),
             )
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Changed **{member}** to `{nickname}`.",
                 ephemeral=True,
             )
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "I can't change that nickname. Check my role position and Manage Nicknames permission.",
                 ephemeral=True,
             )
         except discord.HTTPException:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Discord rejected that nickname change.",
                 ephemeral=True,
             )
@@ -93,19 +95,21 @@ class Admin(commands.Cog):
             text=f"Posted by {interaction.user.display_name}"
         )
 
+        await interaction.response.defer(ephemeral=True)
+
         try:
             await channel.send(embed=embed)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Announcement posted in {channel.mention}.",
                 ephemeral=True,
             )
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "I can't send messages in that channel.",
                 ephemeral=True,
             )
         except discord.HTTPException:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Discord rejected the announcement.",
                 ephemeral=True,
             )

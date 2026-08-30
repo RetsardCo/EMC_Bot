@@ -13,45 +13,35 @@
     "sha256": "2c76a07fc113d1d11e55f034cefb66797fc58519f64145b0d3e38feada76d269",
     "cache": "2023_bsemc_gd_curr_approved.md",
     "provider": "local-json",
-    "status": "current",
-    "source_type": "json",
-    "category": "curriculum",
-    "scope": "GAME DEVELOPMENT (BSEMC-GD)"
+    "status": "verified",
+    "source_type": "json"
   },
   "2023_bsemc-dat_curr_approved.json": {
     "sha256": "195cdf56edca33848aa849028de18dfb7dfe539d44b11d1ac9d98b205a89c044",
     "cache": "2023_bsemc_dat_curr_approved.md",
     "provider": "local-json",
-    "status": "current",
-    "source_type": "json",
-    "category": "curriculum",
-    "scope": "DIGITAL ANIMATION TECHNOLOGY (BSEMC-DAT)"
+    "status": "verified",
+    "source_type": "json"
   },
   "biscast_student_handbook_2025.json": {
     "sha256": "b721d895c9e0a3ce05f2f3da88f4bd47bf29a9fe7e38dcb725fa300c34ad08da",
     "cache": "biscast_student_handbook_2025.md",
     "provider": "local-json",
-    "status": "current",
-    "source_type": "json",
-    "category": "student_handbook",
-    "scope": "Bicol State College of Applied Sciences and Technology (BISCAST) Student Handbook"
+    "status": "verified",
+    "source_type": "json"
   },
   "BSEMC_course_descriptions.json": {
     "sha256": "5827551d6856194e290c107d6be32c1c1d38a9ba7bc78a5a043308707683ac30",
     "cache": "bsemc_course_descriptions.md",
     "provider": "local-json",
-    "status": "current",
-    "source_type": "json",
-    "category": "course_descriptions",
-    "scope": ""
+    "status": "verified",
+    "source_type": "json"
   },
   "BSEMC_PSG_summary.json": {
     "sha256": "1b9332c7ed3a417810b94aed1a05db0560c7e325fcd6f29c5adf73ae7911e9df",
     "cache": "bsemc_psg_summary.md",
     "provider": "local-json",
     "status": "current",
-    "source_type": "json",
-    "category": "program_specifications",
-    "scope": ""
+    "source_type": "json"
   }
 }
