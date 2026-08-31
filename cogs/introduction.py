@@ -23,13 +23,25 @@ from .common import (
 INTRO_CHANNEL_ID = int(os.getenv("INTRO_CHANNEL_ID", "0"))
 MAX_NICKNAME_LENGTH = 32
 
+def year_label(number: int) -> str:
+    suffix = (
+        "st" if number == 1
+        else "nd" if number == 2
+        else "rd" if number == 3
+        else "th"
+    )
+    return f"{number}{suffix} Year"
+
+
 YEAR_ROLE_NAMES = {
-    "DAT": {f"{n}{'st' if n == 1 else 'nd' if n == 2 else 'rd' if n == 3 else 'th'} Year":
-            f"DAT {n}{'st' if n == 1 else 'nd' if n == 2 else 'rd' if n == 3 else 'th'} Year"
-            for n in range(1, 5)},
-    "GD": {f"{n}{'st' if n == 1 else 'nd' if n == 2 else 'rd' if n == 3 else 'th'} Year":
-           f"GD {n}{'st' if n == 1 else 'nd' if n == 2 else 'rd' if n == 3 else 'th'} Year"
-           for n in range(1, 5)},
+    "DAT": {
+        year_label(n): f"DAT-{year_label(n).replace(' ', '-')}"
+        for n in range(1, 5)
+    },
+    "GD": {
+        year_label(n): f"GD-{year_label(n).replace(' ', '-')}"
+        for n in range(1, 5)
+    },
 }
 ALL_YEAR_ROLE_NAMES = {x for d in YEAR_ROLE_NAMES.values() for x in d.values()}
 
