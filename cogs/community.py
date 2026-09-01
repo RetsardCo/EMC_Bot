@@ -6,9 +6,8 @@ import logging
 import os
 import random
 import re
-import urllib.parse
 import urllib.request
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 from html import unescape
 from pathlib import Path
 from typing import Any, Optional
@@ -25,11 +24,21 @@ logger = logging.getLogger("em-bot.community")
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 STATE_PATH = PROJECT_DIR / "data" / "community_scheduler_state.json"
 TOPICS_PATH = PROJECT_DIR / os.getenv("DAILY_CHAT_TOPICS_FILE", "knowledge/daily_topics.json")
+KNOWLEDGE_DIR = PROJECT_DIR / "knowledge"
+KNOWLEDGE_SOURCE_DIR = KNOWLEDGE_DIR / "source"
+KNOWLEDGE_MANIFEST_PATH = KNOWLEDGE_DIR / "manifest.json"
 TIMEZONE_NAME = os.getenv("COMMUNITY_TIMEZONE", "Asia/Manila")
 TIMEZONE = ZoneInfo(TIMEZONE_NAME)
 DAILY_CHAT_TIME = os.getenv("DAILY_CHAT_TIME", "09:00")
 DAILY_AI_FALLBACK_ENABLED = os.getenv("DAILY_AI_FALLBACK_ENABLED", "true").casefold() in {"1", "true", "yes", "on"}
 DAILY_DYNAMIC_ENABLED = os.getenv("DAILY_DYNAMIC_ENABLED", "true").casefold() in {"1", "true", "yes", "on"}
+DAILY_MODE_PATH = PROJECT_DIR / "data" / "daily_knowledge_mode.json"
+DAILY_OFFLINE_ITEMS_PATH = PROJECT_DIR / "knowledge" / "daily_items.json"
+DAILY_OFFLINE_POOL_WEIGHT = max(1, int(os.getenv("DAILY_OFFLINE_POOL_WEIGHT", "20")))
+DAILY_WEB_POOL_WEIGHT = max(1, int(os.getenv("DAILY_WEB_POOL_WEIGHT", "10")))
+DAILY_WEBSITE_SOURCE_WEIGHT = max(1, int(os.getenv("DAILY_WEBSITE_SOURCE_WEIGHT", "10")))
+DAILY_MAX_DYNAMIC_ATTEMPTS = max(1, int(os.getenv("DAILY_MAX_DYNAMIC_ATTEMPTS", "2")))
+DAILY_AI_DUPLICATE_CHECK_ENABLED = os.getenv("DAILY_AI_DUPLICATE_CHECK_ENABLED", "false").casefold() in {"1", "true", "yes", "on"}
 DAILY_MAX_DYNAMIC_ATTEMPTS = max(1, int(os.getenv("DAILY_MAX_DYNAMIC_ATTEMPTS", "5")))
 DAILY_HISTORY_LIMIT = max(20, int(os.getenv("DAILY_HISTORY_LIMIT", "150")))
 DAILY_RECENT_MESSAGE_LIMIT = max(20, int(os.getenv("DAILY_RECENT_MESSAGE_LIMIT", "80")))
@@ -65,12 +74,6 @@ TRIVIA_TYPES = (
     "an unusual but well-established general knowledge fact",
 )
 
-DEFAULT_TRUSTED_SOURCES = (
-    "https://en.wikipedia.org/wiki/Main_Page",
-    "https://www.britannica.com/",
-)
-
-
 def ids(name: str) -> set[int]:
     return {
         int(value.strip())
@@ -105,26 +108,68 @@ def default_topics() -> dict[str, Any]:
         "topics": [
             {
                 "name": "Game Development",
-                "prompts": [
-                    "What is one small game mechanic that makes a game memorable?",
-                    "If you had one week to make a game, what would the core gameplay loop be?",
-                    "Which game level taught you something about good level design?",
+                "sources": [
+                    "https://learn.unity.com/tutorial/controlling-gameobjects-using-components",
+                    "https://dev.epicgames.com/documentation/en-us/unreal-engine/get-started",
+                    "https://docs.godotengine.org/en/stable/tutorials/step_by_step/nodes_and_scenes.html",
                 ],
             },
             {
-                "name": "Drawing",
-                "prompts": [
-                    "What drawing habit has helped you improve the most?",
-                    "Which part of drawing do you find most challenging: form, color, lighting, or perspective?",
-                    "Share one reference or study technique that helps you draw better.",
+                "name": "Game Engines",
+                "sources": [
+                    "https://docs.unity3d.com/6000.1/Documentation/Manual/Components.html",
+                    "https://dev.epicgames.com/documentation/en-us/unreal-engine/get-started",
+                    "https://docs.godotengine.org/en/stable/tutorials/step_by_step/scene_organization.html",
                 ],
             },
             {
                 "name": "Animation",
-                "prompts": [
-                    "Which animation principle do you notice most in games or films?",
-                    "What makes a movement feel believable in an animation?",
-                    "What short animation exercise would you recommend to a beginner?",
+                "sources": [
+                    "https://docs.blender.org/manual/en/latest/editors/dope_sheet/introduction.html",
+                    "https://docs.blender.org/manual/en/latest/animation/keyframes/editing.html",
+                    "https://www.animationmentor.com/articles/12-principles-of-animation/",
+                ],
+            },
+            {
+                "name": "3D Art",
+                "sources": [
+                    "https://docs.blender.org/manual/en/latest/",
+                    "https://docs.blender.org/manual/en/latest/editors/dope_sheet/introduction.html",
+                ],
+            },
+            {
+                "name": "Computer Graphics",
+                "sources": [
+                    "https://www.khronos.org/opengl/wiki/Rendering_Pipeline_Overview",
+                    "https://www.khronos.org/opengl/wiki/Getting_Started",
+                ],
+            },
+            {
+                "name": "Programming for Games",
+                "sources": [
+                    "https://dev.epicgames.com/documentation/en-us/unreal-engine/programming-basics-with-unreal-engine",
+                    "https://docs.unity3d.com/6000.1/Documentation/Manual/Components.html",
+                    "https://docs.godotengine.org/en/stable/tutorials/step_by_step/nodes_and_scenes.html",
+                ],
+            },
+            {
+                "name": "Anime",
+                "sources": [
+                    "https://en.wikipedia.org/wiki/Anime",
+                ],
+            },
+            {
+                "name": "Animated Works",
+                "sources": [
+                    "https://en.wikipedia.org/wiki/Animation",
+                    "https://www.britannica.com/art/animation",
+                ],
+            },
+            {
+                "name": "Games",
+                "sources": [
+                    "https://en.wikipedia.org/wiki/Video_game",
+                    "https://www.britannica.com/technology/video-game",
                 ],
             },
         ]
@@ -135,11 +180,17 @@ def load_topics() -> list[dict[str, Any]]:
     try:
         content = json.loads(TOPICS_PATH.read_text(encoding="utf-8"))
         topics = content.get("topics", []) if isinstance(content, dict) else []
-        usable = [
-            topic
-            for topic in topics
-            if isinstance(topic, dict) and topic.get("name") and topic.get("prompts")
-        ]
+        usable = []
+        for topic in topics:
+            if not isinstance(topic, dict) or not topic.get("name"):
+                continue
+            sources = topic.get("sources", topic.get("source_urls", []))
+            if isinstance(sources, str):
+                sources = [sources]
+            if not isinstance(sources, list):
+                sources = []
+            cleaned = [str(x).strip() for x in sources if str(x).strip().startswith(("https://", "http://"))]
+            usable.append({"name": str(topic["name"]).strip(), "sources": cleaned})
         if usable:
             return usable
     except (OSError, json.JSONDecodeError):
@@ -147,30 +198,109 @@ def load_topics() -> list[dict[str, Any]]:
     return default_topics()["topics"]
 
 
-def build_daily_embed(title: str, prompt: str, footer: str = "EM Bot community prompt") -> discord.Embed:
+def format_daily_source(source: object) -> str:
+    if not source:
+        return "Source not provided."
+
+    if isinstance(source, dict):
+        source_type = str(source.get("type", "")).strip().casefold()
+
+        if source_type == "website":
+            name = str(source.get("name", "Approved Website")).strip()
+            url = str(source.get("url", "")).strip()
+            if name and url:
+                return f"**{name}**\n{url}"
+            return url or name or "Approved Website"
+
+        if source_type == "book":
+            title = str(
+                source.get(
+                    "title",
+                    source.get("name", "Reference Book"),
+                )
+            ).strip()
+            author = str(source.get("author", "")).strip()
+            page = source.get("page", "")
+
+            lines = [f"**{title or 'Reference Book'}**"]
+            if author:
+                lines.append(author)
+            if page not in ("", None):
+                lines.append(f"Page {page}")
+            return "\n".join(lines)
+
+        name = str(
+            source.get(
+                "name",
+                source.get("title", "Approved Source"),
+            )
+        ).strip()
+        url = str(source.get("url", "")).strip()
+        return f"**{name}**\n{url}" if name and url else (name or url)
+
+    return str(source).strip() or "Source not provided."
+
+
+def build_knowledge_embed(
+    topic: str,
+    fact: str,
+    explanation: str,
+    source: object,
+) -> discord.Embed:
     embed = discord.Embed(
-        title=title,
-        description=(
-            f"**{prompt}**\n\n"
-            "Share a short answer, sketch, reference, idea, or example below. "
-            "Be constructive and give credit when sharing someone else's work."
-        ),
+        title=f"Daily {topic} Knowledge",
+        description=f"**{fact}**\n\n{explanation}",
         color=discord.Color.teal(),
         timestamp=discord.utils.utcnow(),
     )
-    embed.set_footer(text=footer)
-    return embed
 
+    if source:
+        if isinstance(source, dict):
+            kind = str(source.get("type", "")).strip().casefold()
+            label = (
+                "Reference Book"
+                if kind == "book"
+                else "Website"
+                if kind == "website"
+                else "Source"
+            )
+            value = format_daily_source(source)
+        elif isinstance(source, str) and source.startswith("book://"):
+            filename = source[len("book://"):]
+            title = Path(filename).stem.replace("_", " ").strip()
+            try:
+                manifest = json.loads(
+                    KNOWLEDGE_MANIFEST_PATH.read_text(
+                        encoding="utf-8"
+                    )
+                )
+                title = str(
+                    manifest.get(filename, {}).get(
+                        "title",
+                        title,
+                    )
+                ).strip()
+            except (OSError, json.JSONDecodeError):
+                pass
 
-def build_trivia_embed(topic: str, text: str, source_url: str) -> discord.Embed:
-    embed = build_daily_embed(
-        f"Daily {topic} Trivia",
-        text,
-        "Source-backed trivia | EM Bot",
+            label = "Reference Book"
+            value = f"**{title}**\n`{filename}`"
+        else:
+            label = "Source"
+            value = format_daily_source(source)
+
+        embed.add_field(
+            name=label,
+            value=value[:1024],
+            inline=False,
+        )
+
+    embed.set_footer(
+        text="Source-backed daily knowledge | EM Bot"
     )
-    if source_url:
-        embed.add_field(name="Source", value=source_url[:1024], inline=False)
     return embed
+
+
 
 
 def visible_text(value: str) -> str:
@@ -241,40 +371,437 @@ def fetch_json(url: str) -> Any:
         return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
-def search_wikipedia(query: str) -> Optional[dict[str, str]]:
-    """Use Wikipedia's public API as a broad fallback source for general-knowledge retrieval."""
-    params = urllib.parse.urlencode(
-        {
-            "action": "query",
-            "list": "search",
-            "srsearch": query,
-            "format": "json",
-            "utf8": 1,
-            "srlimit": 5,
-        }
-    )
-    api_url = f"https://en.wikipedia.org/w/api.php?{params}"
-    data = fetch_json(api_url)
-    results = data.get("query", {}).get("search", [])
-    if not results:
-        return None
 
-    title = str(results[0].get("title", "")).strip()
-    if not title:
-        return None
-
-    summary_url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(title, safe="")
+def load_reference_book_sources() -> list[dict[str, Any]]:
     try:
-        summary = fetch_json(summary_url)
-    except Exception:
+        manifest = json.loads(
+            KNOWLEDGE_MANIFEST_PATH.read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    if not isinstance(manifest, dict):
+        return []
+
+    results: list[dict[str, Any]] = []
+
+    for filename, entry in manifest.items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("category") != "reference_book":
+            continue
+        if not entry.get("daily_source_enabled"):
+            continue
+        if str(entry.get("status", "")).casefold() in {"draft", "archived"}:
+            continue
+
+        path = KNOWLEDGE_SOURCE_DIR / str(filename)
+        if not path.is_file() or path.suffix.casefold() != ".json":
+            continue
+
+        try:
+            data = json.loads(
+                path.read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, json.JSONDecodeError):
+            logger.warning(
+                "Could not load reference book %s for Daily Knowledge.",
+                filename,
+            )
+            continue
+
+        text = json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=2,
+        ).strip()
+
+        if len(text) < 120:
+            continue
+
+        try:
+            weight = max(
+                1,
+                min(
+                    100,
+                    int(
+                        entry.get(
+                            "daily_source_weight",
+                            25,
+                        )
+                    ),
+                ),
+            )
+        except (TypeError, ValueError):
+            weight = 25
+
+        results.append(
+            {
+                "url": f"book://{filename}",
+                "text": text[:18000],
+                "title": str(
+                    entry.get(
+                        "title",
+                        Path(filename).stem.replace("_", " "),
+                    )
+                ).strip()[:120],
+                "weight": weight,
+                "source_type": "reference_book",
+            }
+        )
+
+    return results
+
+
+def weighted_random_source(
+    sources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not sources:
+        raise RuntimeError("No daily knowledge sources are available.")
+
+    return random.choices(
+        sources,
+        weights=[
+            max(1, int(source.get("weight", 1)))
+            for source in sources
+        ],
+        k=1,
+    )[0]
+
+
+
+def load_offline_daily_sources() -> list[dict[str, Any]]:
+    try:
+        data = json.loads(
+            DAILY_OFFLINE_ITEMS_PATH.read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    raw_sources = data.get("sources", []) if isinstance(data, dict) else []
+    if not isinstance(raw_sources, list):
+        return []
+
+    sources: list[dict[str, Any]] = []
+
+    for source_index, raw in enumerate(raw_sources):
+        if not isinstance(raw, dict):
+            continue
+
+        items = raw.get("items", [])
+        if not isinstance(items, list):
+            continue
+
+        usable: list[dict[str, Any]] = []
+
+        for item_index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+
+            fact = str(item.get("fact", "")).strip()
+            explanation = str(item.get("explanation", "")).strip()
+
+            if not fact or not explanation:
+                continue
+
+            item_id = str(
+                item.get(
+                    "id",
+                    f"offline-{source_index + 1}-{item_index + 1}",
+                )
+            ).strip()
+
+            if not item_id:
+                continue
+
+            usable.append(
+                {
+                    "id": item_id,
+                    "topic": str(
+                        item.get(
+                            "topic",
+                            raw.get(
+                                "topic",
+                                "Creative Technology",
+                            ),
+                        )
+                    ).strip() or "Creative Technology",
+                    "title": str(
+                        item.get(
+                            "title",
+                            "",
+                        )
+                    ).strip(),
+                    "fact": fact,
+                    "explanation": explanation,
+                    "source": item.get(
+                        "source",
+                        raw.get(
+                            "source",
+                            "Approved Offline Reference",
+                        ),
+                    ),
+                }
+            )
+
+        if not usable:
+            continue
+
+        try:
+            weight = max(
+                1,
+                min(
+                    100,
+                    int(
+                        raw.get(
+                            "weight",
+                            DAILY_OFFLINE_POOL_WEIGHT,
+                        )
+                    ),
+                ),
+            )
+        except (TypeError, ValueError):
+            weight = DAILY_OFFLINE_POOL_WEIGHT
+
+        sources.append(
+            {
+                "id": str(
+                    raw.get(
+                        "id",
+                        f"offline-source-{source_index + 1}",
+                    )
+                ),
+                "title": str(
+                    raw.get(
+                        "title",
+                        f"Offline Source {source_index + 1}",
+                    )
+                ).strip()[:120],
+                "weight": weight,
+                "items": usable,
+            }
+        )
+
+    return sources
+
+
+def load_daily_mode() -> dict[str, Any]:
+    try:
+        data = json.loads(
+            DAILY_MODE_PATH.read_text(
+                encoding="utf-8"
+            )
+        )
+        if isinstance(data, dict):
+            return data
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    return {
+        "mode": "offline",
+        "web_today": None,
+    }
+
+
+def save_daily_mode(data: dict[str, Any]) -> None:
+    DAILY_MODE_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    temporary = DAILY_MODE_PATH.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    temporary.replace(DAILY_MODE_PATH)
+
+
+def current_daily_mode() -> str:
+    data = load_daily_mode()
+    today = datetime.now(TIMEZONE).date().isoformat()
+
+    if data.get("web_today") == today:
+        return "web_today"
+
+    mode = str(
+        data.get("mode", "offline")
+    ).casefold()
+
+    return mode if mode in {"offline", "mixed"} else "offline"
+
+
+def set_daily_mode(mode: str) -> None:
+    data = load_daily_mode()
+    today = datetime.now(TIMEZONE).date().isoformat()
+
+    if mode == "web_today":
+        data["web_today"] = today
+    else:
+        data["mode"] = mode
+        data["web_today"] = None
+
+    data["updated_at"] = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    save_daily_mode(data)
+
+
+def choose_offline_item(
+    state: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    sources = load_offline_daily_sources()
+    if not sources:
         return None
 
-    extract = str(summary.get("extract", "")).strip()
-    page_url = str(summary.get("content_urls", {}).get("desktop", {}).get("page", "")).strip()
-    if not extract or not page_url:
-        return None
+    used = state.setdefault(
+        "used_offline_daily_items",
+        {},
+    )
 
-    return {"text": extract[:9000], "url": page_url, "title": title}
+    groups: list[dict[str, Any]] = []
+
+    for source in sources:
+        unused = [
+            item
+            for item in source["items"]
+            if not used.get(item["id"])
+        ]
+
+        if unused:
+            groups.append(
+                {
+                    **source,
+                    "items": unused,
+                }
+            )
+
+    if not groups:
+        # Reset the corpus for a new cycle.
+        used.clear()
+
+        for source in sources:
+            groups.append(source)
+
+    source = random.choices(
+        groups,
+        weights=[
+            group["weight"]
+            for group in groups
+        ],
+        k=1,
+    )[0]
+
+    return random.choice(source["items"])
+
+
+class DailyKnowledgeModeView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=180)
+        self.refresh_buttons()
+
+    def refresh_buttons(self) -> None:
+        mode = current_daily_mode()
+        self.offline.disabled = mode == "offline"
+        self.mixed.disabled = mode == "mixed"
+        self.web_today.disabled = mode == "web_today"
+
+    @discord.ui.button(
+        label="Offline Only",
+        style=discord.ButtonStyle.success,
+        emoji="📚",
+    )
+    async def offline(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not isinstance(interaction.user, discord.Member) or not is_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only staff can change Daily Knowledge mode.",
+                ephemeral=True,
+            )
+            return
+
+        set_daily_mode("offline")
+        self.refresh_buttons()
+
+        await interaction.response.edit_message(
+            content=(
+                "📚 **Daily Knowledge: Offline Only**\n\n"
+                "Scheduled posts use the pre-generated local corpus.\n"
+                "**No AI generation request is required.**"
+            ),
+            view=self,
+        )
+
+    @discord.ui.button(
+        label="Mixed",
+        style=discord.ButtonStyle.primary,
+        emoji="🎲",
+    )
+    async def mixed(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not isinstance(interaction.user, discord.Member) or not is_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only staff can change Daily Knowledge mode.",
+                ephemeral=True,
+            )
+            return
+
+        set_daily_mode("mixed")
+        self.refresh_buttons()
+
+        await interaction.response.edit_message(
+            content=(
+                "🎲 **Daily Knowledge: Mixed**\n\n"
+                "Offline and online sources are selected by pool weight.\n"
+                "If online generation fails, the offline corpus takes over."
+            ),
+            view=self,
+        )
+
+    @discord.ui.button(
+        label="Web for Today",
+        style=discord.ButtonStyle.secondary,
+        emoji="🌐",
+    )
+    async def web_today(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not isinstance(interaction.user, discord.Member) or not is_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only staff can change Daily Knowledge mode.",
+                ephemeral=True,
+            )
+            return
+
+        set_daily_mode("web_today")
+        self.refresh_buttons()
+
+        await interaction.response.edit_message(
+            content=(
+                "🌐 **Daily Knowledge: Web for Today**\n\n"
+                "The online/AI path is enabled for today's scheduled post only.\n"
+                "The next Manila date automatically returns to Offline Only."
+            ),
+            view=self,
+        )
 
 
 class Community(commands.Cog):
@@ -421,6 +948,9 @@ class Community(commands.Cog):
                 if overlap >= 0.78:
                     return True
 
+        if not DAILY_AI_DUPLICATE_CHECK_ENABLED:
+            return False
+
         instruction = f"""
 You are checking whether new daily community content is repetitive.
 
@@ -441,51 +971,63 @@ or
 NEW
 
 Use semantic meaning, not just matching words. Mark DUPLICATE when the candidate
-asks substantially the same question, teaches substantially the same fact, or
-would make the community feel like the same topic has just been repeated.
+teaches substantially the same fact or repeats substantially the same information.
 """
         answer = await self._call_ai(instruction, [], "daily_duplicate_check")
         return bool(answer and answer.strip().upper().startswith("DUPLICATE"))
 
-    async def _generate_ai_prompt(self, topic: str) -> Optional[str]:
-        instruction = f"""
-Create exactly ONE short, open-ended community discussion prompt about: {topic}
+    async def _retrieve_sources(
+        self,
+        topic: str,
+        topic_data: Optional[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        sources: list[dict[str, Any]] = []
 
-Do not state facts, dates, statistics, quotations, rankings, or trivia.
-Use a fresh angle that is not similar to the previous daily content below.
-Make it constructive, student-friendly, and easy to answer in Discord.
-Return only the prompt.
-
-PREVIOUS DAILY CONTENT:
-{self._history_text()}
-"""
-        answer = await self._call_ai(instruction, [], "daily_prompt")
-        if not answer:
-            return None
-        if await self._is_too_similar(topic, answer):
-            return None
-        return answer[:700]
-
-    async def _retrieve_sources(self, topic: str, topic_data: Optional[dict[str, Any]]) -> list[dict[str, str]]:
-        sources: list[dict[str, str]] = []
-        configured = self._topic_sources(topic_data)
-
-        # Explicitly configured sources are preferred.
-        for url in configured[:8]:
+        for url in self._topic_sources(topic_data)[:8]:
             try:
-                excerpt = await asyncio.to_thread(fetch_web_excerpt, url)
+                excerpt = await asyncio.to_thread(
+                    fetch_web_excerpt,
+                    url,
+                )
                 if len(excerpt) >= 120:
-                    sources.append({"url": url, "text": excerpt})
+                    sources.append(
+                        {
+                            "url": url,
+                            "text": excerpt,
+                            "title": topic,
+                            "weight": DAILY_WEBSITE_SOURCE_WEIGHT,
+                            "source_type": "website",
+                        }
+                    )
             except Exception as error:
-                logger.warning("Could not retrieve trivia source %s: %s", url, error)
+                logger.warning(
+                    "Could not retrieve trivia source %s: %s",
+                    url,
+                    error,
+                )
 
-        # General-knowledge fallback: search Wikipedia for a concrete topic phrase.
+        sources.extend(
+            load_reference_book_sources()
+        )
+
         if not sources:
-            result = await asyncio.to_thread(search_wikipedia, topic)
+            result = await asyncio.to_thread(
+                search_wikipedia,
+                topic,
+            )
             if result:
-                sources.append({"url": result["url"], "text": result["text"]})
+                sources.append(
+                    {
+                        "url": result["url"],
+                        "text": result["text"],
+                        "title": result["title"],
+                        "weight": 5,
+                        "source_type": "fallback",
+                    }
+                )
 
         return sources
+
 
     async def _verify_trivia(
         self,
@@ -526,7 +1068,7 @@ REJECT
         )
         return bool(answer and answer.strip().upper().startswith("VERIFIED"))
 
-    async def _generate_dynamic_trivia(
+    async def _generate_daily_knowledge(
         self,
         topic: str,
         topic_data: Optional[dict[str, Any]],
@@ -543,16 +1085,16 @@ REJECT
         recent_text = "\n".join(f"- {msg}" for msg in recent[-40:]) or "(No recent community messages.)"
 
         for attempt in range(DAILY_MAX_DYNAMIC_ATTEMPTS):
-            source = random.choice(sources)
-            trivia_type = random.choice(TRIVIA_TYPES)
+            source = weighted_random_source(sources)
+            knowledge_type = random.choice(TRIVIA_TYPES)
             instruction = f"""
 You are the Daily Knowledge Editor for a student community.
 
 TODAY'S TOPIC:
 {topic}
 
-TRIVIA STYLE:
-{trivia_type}
+KNOWLEDGE STYLE:
+{knowledge_type}
 
 PREVIOUS DAILY CONTENT:
 {previous}
@@ -560,7 +1102,7 @@ PREVIOUS DAILY CONTENT:
 RECENT COMMUNITY MESSAGES:
 {recent_text}
 
-Create ONE genuinely new, interesting trivia item.
+Create ONE genuinely new, useful, interesting factual item for students.
 
 Rules:
 1. Use ONLY information explicitly supported by the supplied source.
@@ -569,109 +1111,213 @@ Rules:
    rankings, causes, or comparisons.
 4. Avoid facts already used in previous daily content.
 5. Avoid a topic that the recent community messages already discussed heavily.
-6. Prefer a surprising but easy-to-understand general-knowledge fact.
-7. Return exactly two lines:
-Question: <question>
-Answer: <one or two sentence answer>
-8. If the source does not contain a suitable NEW fact, return NO_PROMPT.
+6. Do NOT ask a question anywhere in the output.
+7. Do NOT use question marks.
+8. Return exactly three lines:
+FACT: <one clear factual statement>
+EXPLANATION: <one or two beginner-friendly sentences>
+TOPIC: <short topic label>
+9. If the source does not contain a suitable NEW fact, return NO_ITEM.
 
-SOURCE:
+SOURCE URL:
+{source['url']}
+
+SOURCE TEXT:
 {source['text']}
 """
             candidate = await self._call_ai(
                 instruction,
                 [f"TRUSTED SOURCE\nSOURCE URL: {source['url']}\nSOURCE TEXT:\n{source['text']}"],
-                "daily_trivia_generation",
+                "daily_knowledge_generation",
             )
-            if not candidate or candidate.upper() == "NO_PROMPT":
+            if not candidate or candidate.strip().upper() == "NO_ITEM":
                 continue
-            if not re.search(r"Question:\s*.+Answer:\s*.+", candidate, flags=re.IGNORECASE):
+
+            match = re.search(
+                r"FACT:\s*(.+?)\s+EXPLANATION:\s*(.+?)\s+TOPIC:\s*(.+)$",
+                candidate,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if not match:
                 continue
-            if await self._is_too_similar(topic, candidate):
-                logger.info("Rejected repetitive dynamic trivia candidate on attempt %d.", attempt + 1)
+
+            fact = re.sub(r"\s+", " ", match.group(1)).strip()
+            explanation = re.sub(r"\s+", " ", match.group(2)).strip()
+            label = re.sub(r"\s+", " ", match.group(3)).strip()
+            if "?" in fact or "?" in explanation or "?" in label:
                 continue
-            if not await self._verify_trivia(topic, candidate, source["text"], source["url"]):
-                logger.info("Rejected unverified dynamic trivia candidate on attempt %d.", attempt + 1)
+            if await self._is_too_similar(topic, f"{fact} {explanation}"):
+                logger.info("Rejected repetitive daily knowledge candidate on attempt %d.", attempt + 1)
+                continue
+
+            candidate_text = f"FACT: {fact}\nEXPLANATION: {explanation}"
+            if not await self._verify_trivia(topic, candidate_text, source["text"], source["url"]):
+                logger.info("Rejected unverified daily knowledge candidate on attempt %d.", attempt + 1)
                 continue
 
             return {
-                "text": candidate[:1200],
+                "topic": label or topic,
+                "fact": fact,
+                "explanation": explanation,
                 "source": source["url"],
+                "text": f"{fact}\n\n{explanation}",
             }
 
         return None
 
-    async def _next_daily_embed(self) -> tuple[discord.Embed, Optional[str], dict[str, str]]:
-        used = self.state.setdefault("used_daily_prompts", {})
-        choices: list[tuple[str, str, str]] = []
-        topics = load_topics()
+    async def _next_daily_embed(
+        self,
+    ) -> tuple[discord.Embed, Optional[str], dict[str, Any]]:
+        mode = current_daily_mode()
 
-        for topic in topics:
-            name = str(topic["name"]).strip()
-            for prompt in topic["prompts"]:
-                text = str(prompt).strip()
-                if not text:
-                    continue
-                key = f"{name}|{text}"
-                if key not in used:
-                    choices.append((name, text, key))
+        # Offline: zero AI generation calls.
+        if mode == "offline":
+            item = choose_offline_item(self.state)
 
-        if choices:
-            topic, prompt, key = random.choice(choices)
-            return (
-                build_daily_embed(f"Daily {topic} Chat", prompt),
-                key,
-                {"topic": topic, "text": prompt, "kind": "json", "source": ""},
+            if not item:
+                raise RuntimeError(
+                    "No pre-generated offline daily knowledge items are available."
+                )
+
+            self.state.setdefault(
+                "used_offline_daily_items",
+                {},
+            )[item["id"]] = True
+            self._save_state()
+
+            source = item.get(
+                "source",
+                "Approved Offline Reference",
             )
 
-        # All hand-written prompts have been used. This is where the bot becomes dynamic.
-        topic_data = random.choice(topics) if topics else {"name": "Creative Technology", "prompts": []}
-        topic = str(topic_data.get("name", "Creative Technology")).strip() or "Creative Technology"
-
-        trivia = await self._generate_dynamic_trivia(topic, topic_data)
-        if trivia:
             return (
-                build_trivia_embed(topic, trivia["text"], trivia["source"]),
-                None,
-                {"topic": topic, "text": trivia["text"], "kind": "trivia", "source": trivia["source"]},
-            )
-
-        creative = await self._generate_ai_prompt(topic)
-        if creative:
-            return (
-                build_daily_embed(
-                    f"Daily {topic} Chat",
-                    creative,
-                    "AI-generated discussion prompt | no factual claims",
+                build_knowledge_embed(
+                    item["topic"],
+                    item["fact"],
+                    item["explanation"],
+                    source,
                 ),
-                None,
-                {"topic": topic, "text": creative, "kind": "ai", "source": ""},
+                item["id"],
+                {
+                    "topic": item["topic"],
+                    "text": f"{item['fact']}\n\n{item['explanation']}",
+                    "kind": "offline_knowledge",
+                    "source": source,
+                },
             )
 
-        # Final deterministic fallback: begin a fresh JSON cycle.
-        fresh_choices: list[tuple[str, str, str]] = []
-        self.state["used_daily_prompts"] = {}
-        for topic_item in topics:
-            name = str(topic_item.get("name", "")).strip()
-            prompts = topic_item.get("prompts", [])
-            for prompt in prompts:
-                text = str(prompt).strip()
-                if name and text:
-                    key = f"{name}|{text}"
-                    self.state["used_daily_prompts"][key] = False
-                    fresh_choices.append((name, text, key))
-        self._save_state()
+        # Mixed: choose offline vs web BEFORE making any web/AI request.
+        if mode == "mixed" and load_offline_daily_sources():
+            selected = random.choices(
+                ["offline", "web"],
+                weights=[
+                    DAILY_OFFLINE_POOL_WEIGHT,
+                    DAILY_WEB_POOL_WEIGHT,
+                ],
+                k=1,
+            )[0]
 
-        topic, prompt, key = random.choice(fresh_choices) if fresh_choices else (
-            "Creative Technology",
-            "What creative project would you like to finish this week?",
-            "Creative Technology|What creative project would you like to finish this week?",
+            if selected == "offline":
+                item = choose_offline_item(self.state)
+
+                if item:
+                    self.state.setdefault(
+                        "used_offline_daily_items",
+                        {},
+                    )[item["id"]] = True
+                    self._save_state()
+
+                    source = item.get(
+                        "source",
+                        "Approved Offline Reference",
+                    )
+
+                    return (
+                        build_knowledge_embed(
+                            item["topic"],
+                            item["fact"],
+                            item["explanation"],
+                            source,
+                        ),
+                        item["id"],
+                        {
+                            "topic": item["topic"],
+                            "text": f"{item['fact']}\n\n{item['explanation']}",
+                            "kind": "offline_knowledge",
+                            "source": source,
+                        },
+                    )
+
+        # Web path. It remains limited to configured topic sources.
+        topics = load_topics()
+        candidates = topics[:]
+        random.shuffle(candidates)
+
+        for topic_data in candidates:
+            topic = str(
+                topic_data.get(
+                    "name",
+                    "Creative Technology",
+                )
+            ).strip() or "Creative Technology"
+
+            item = await self._generate_daily_knowledge(
+                topic,
+                topic_data,
+            )
+
+            if item:
+                return (
+                    build_knowledge_embed(
+                        item["topic"],
+                        item["fact"],
+                        item["explanation"],
+                        item["source"],
+                    ),
+                    None,
+                    {
+                        "topic": item["topic"],
+                        "text": item["text"],
+                        "kind": "web_knowledge",
+                        "source": item["source"],
+                    },
+                )
+
+        # Online failed: offline takeover.
+        item = choose_offline_item(self.state)
+
+        if item:
+            self.state.setdefault(
+                "used_offline_daily_items",
+                {},
+            )[item["id"]] = True
+            self._save_state()
+
+            source = item.get(
+                "source",
+                "Approved Offline Reference",
+            )
+
+            return (
+                build_knowledge_embed(
+                    item["topic"],
+                    item["fact"],
+                    item["explanation"],
+                    source,
+                ),
+                item["id"],
+                {
+                    "topic": item["topic"],
+                    "text": f"{item['fact']}\n\n{item['explanation']}",
+                    "kind": "offline_fallback",
+                    "source": source,
+                },
+            )
+
+        raise RuntimeError(
+            "No verified daily knowledge item is available from approved online or offline sources."
         )
-        return (
-            build_daily_embed(f"Daily {topic} Chat", prompt),
-            key,
-            {"topic": topic, "text": prompt, "kind": "json_reset", "source": ""},
-        )
+
 
     def _mark_daily_prompt_used(self, key: Optional[str], item: Optional[dict[str, str]] = None) -> None:
         if key:
@@ -716,26 +1362,39 @@ SOURCE:
                 logger.exception("Could not read local-holiday source channel %s.", channel_id)
         return list(dict.fromkeys(notices))
 
-    async def _announce_holidays(self, target: date) -> None:
+    async def _announce_holidays(self, target: date, days_ahead: int = 0) -> None:
         if not HOLIDAY_ANNOUNCEMENT_CHANNEL_IDS:
             return
+
         local = await self._local_holidays(target)
         try:
             nationwide = await asyncio.to_thread(fetch_nationwide_holidays, target)
         except Exception as error:
-            logger.warning("Official Gazette holiday check failed: %s", error)
+            logger.warning("Official Gazette holiday check failed for %s: %s", target, error)
             nationwide = []
 
         notices = [("Nationwide holiday", item) for item in nationwide] + [
             ("BISCAST/local notice", item) for item in local
         ]
         for kind, detail in notices:
-            key = f"holiday:{target.isoformat()}:{kind}:{detail}"
+            if days_ahead == 3:
+                key = f"holiday-reminder:{target.isoformat()}:{kind}:{detail}"
+                title = "Holiday Reminder"
+                description = (
+                    f"**{detail}** is coming in **3 days**.\n\n"
+                    f"Date: **{target.strftime('%B %d, %Y')}**"
+                )
+            else:
+                key = f"holiday:{target.isoformat()}:{kind}:{detail}"
+                title = "Holiday Notice"
+                description = f"**{detail}**\n\nDate: **{target.strftime('%B %d, %Y')}**"
+
             if self._already_sent(key):
                 continue
+
             embed = discord.Embed(
-                title="Holiday Notice",
-                description=f"**{detail}**\n\nDate: **{target.strftime('%B %d, %Y')}**",
+                title=title,
+                description=description,
                 color=discord.Color.gold(),
             )
             if kind == "Nationwide holiday":
@@ -752,20 +1411,52 @@ SOURCE:
         now = datetime.now(TIMEZONE)
         today = now.date()
         if DAILY_CHAT_CHANNEL_IDS and now.time() >= configured_time(DAILY_CHAT_TIME):
-            key = f"daily-chat:{today.isoformat()}"
+            key = f"daily-knowledge:{today.isoformat()}"
             if not self._already_sent(key):
-                embed, prompt_key, item = await self._next_daily_embed()
-                if await self._post_embed(DAILY_CHAT_CHANNEL_IDS, embed):
-                    self.state["sent"][key] = True
-                    self._mark_daily_prompt_used(prompt_key, item)
+                try:
+                    embed, prompt_key, item = await self._next_daily_embed()
+                    posted = await self._post_embed(DAILY_CHAT_CHANNEL_IDS, embed)
+                    if posted:
+                        self.state["sent"][key] = True
+                        self._mark_daily_prompt_used(prompt_key, item)
+                        logger.info("Daily knowledge post sent for %s to %d channel(s).", today, posted)
+                except Exception:
+                    logger.exception("Daily knowledge generation/post failed for %s", today)
+
         if now.time() >= configured_time(HOLIDAY_CHECK_TIME):
-            await self._announce_holidays(today)
+            await self._announce_holidays(today, 0)
+            await self._announce_holidays(today + timedelta(days=3), 3)
 
     @scheduler.before_loop
     async def before_scheduler(self) -> None:
         await self.bot.wait_until_ready()
 
-    @app_commands.command(name="daily_chat_now", description="Post a daily community prompt now for testing.")
+    @app_commands.command(
+        name="daily_knowledge",
+        description="Choose Daily Knowledge source mode.",
+    )
+    @staff_only()
+    async def daily_knowledge(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        labels = {
+            "offline": "📚 Offline Only",
+            "mixed": "🎲 Mixed",
+            "web_today": "🌐 Web for Today",
+        }
+
+        await interaction.response.send_message(
+            (
+                "🧠 **Daily Knowledge Mode**\n\n"
+                f"Current mode: **{labels.get(current_daily_mode(), '📚 Offline Only')}**\n\n"
+                "Choose how the scheduled Daily Knowledge post should get its content."
+            ),
+            view=DailyKnowledgeModeView(),
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="daily_chat_now", description="Post a daily knowledge item now for testing.")
     @staff_only()
     async def daily_chat_now(self, interaction: discord.Interaction) -> None:
         if not DAILY_CHAT_CHANNEL_IDS:
@@ -774,14 +1465,29 @@ SOURCE:
                 ephemeral=True,
             )
             return
-        embed, prompt_key, item = await self._next_daily_embed()
-        count = await self._post_embed(DAILY_CHAT_CHANNEL_IDS, embed)
-        if count:
-            self._mark_daily_prompt_used(prompt_key, item)
-        await interaction.response.send_message(
-            f"Posted the daily prompt to **{count}** configured channel(s).",
-            ephemeral=True,
-        )
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            embed, _, item = await self._next_daily_embed()
+            count = await self._post_embed(DAILY_CHAT_CHANNEL_IDS, embed)
+            if count:
+                self._remember_daily_item(
+                    item.get("topic", "Creative Technology"),
+                    item.get("text", ""),
+                    item.get("kind", "knowledge"),
+                    item.get("source", ""),
+                )
+            await interaction.followup.send(
+                f"Posted the daily knowledge test to **{count}** configured channel(s).\n"
+                "This test does **not** consume today's scheduled post.",
+                ephemeral=True,
+            )
+        except Exception as error:
+            logger.exception("Daily knowledge test failed: %s", error)
+            await interaction.followup.send(
+                "No verified daily knowledge item could be generated right now. Check the EM Bot console for details.",
+                ephemeral=True,
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

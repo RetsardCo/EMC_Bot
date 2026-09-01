@@ -26,6 +26,7 @@ SOURCE_DIR = KNOWLEDGE_DIR / "source"
 CACHE_DIR = KNOWLEDGE_DIR / "cache"
 DRAFT_DIR = KNOWLEDGE_DIR / "drafts"
 MANIFEST_PATH = KNOWLEDGE_DIR / "manifest.json"
+REFERENCE_BOOK_CATEGORY = "reference_book"
 
 KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
 SOURCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1411,6 +1412,280 @@ def curriculum_manager_options() -> list[discord.SelectOption]:
 
 
 
+
+def reference_book_documents() -> list[Path]:
+    manifest = load_manifest()
+    results: list[Path] = []
+
+    for path in SOURCE_DIR.glob("*.json"):
+        entry = manifest.get(path.name, {})
+        if isinstance(entry, dict) and entry.get("category") == REFERENCE_BOOK_CATEGORY:
+            results.append(path)
+
+    return sorted(results, key=lambda p: p.name.casefold())
+
+
+def reference_book_weight(filename: str) -> int:
+    entry = document_metadata(filename)
+    try:
+        return max(1, min(100, int(entry.get("daily_source_weight", 25))))
+    except (TypeError, ValueError):
+        return 25
+
+
+def set_reference_book_config(
+    filename: str,
+    *,
+    enabled: bool | None = None,
+    weight: int | None = None,
+) -> tuple[bool, str]:
+    manifest = load_manifest()
+    entry = manifest.get(filename)
+
+    if not entry:
+        return False, "The selected reference book is not registered."
+
+    if entry.get("category") != REFERENCE_BOOK_CATEGORY:
+        return False, "The selected document is not a reference book."
+
+    if enabled is not None:
+        entry["daily_source_enabled"] = bool(enabled)
+
+    if weight is not None:
+        if not 1 <= weight <= 100:
+            return False, "Weight must be between 1 and 100."
+        entry["daily_source_weight"] = int(weight)
+
+    manifest[filename] = entry
+    save_manifest(manifest)
+    return True, ""
+
+
+def reference_book_title(
+    filename: str,
+    data: dict | None = None,
+) -> str:
+    entry = document_metadata(filename)
+
+    for value in (
+        entry.get("title"),
+        data.get("title") if isinstance(data, dict) else None,
+        data.get("name") if isinstance(data, dict) else None,
+    ):
+        if value:
+            return str(value).strip()[:100]
+
+    return Path(filename).stem.replace("_", " ").strip()[:100]
+
+
+class ReferenceBookWeightModal(discord.ui.Modal, title="Daily Source Weight"):
+    weight = discord.ui.TextInput(
+        label="Weight (1-100)",
+        placeholder="25",
+        required=True,
+        min_length=1,
+        max_length=3,
+    )
+
+    def __init__(self, filename: str) -> None:
+        super().__init__()
+        self.filename = filename
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            value = int(self.weight.value.strip())
+        except ValueError:
+            await interaction.response.send_message(
+                "Please enter a whole number from 1 to 100.",
+                ephemeral=True,
+            )
+            return
+
+        ok, error = set_reference_book_config(
+            self.filename,
+            weight=value,
+        )
+
+        await interaction.response.send_message(
+            (
+                f"✅ `{self.filename}` daily selection weight is now **{value}**."
+                if ok
+                else f"❌ {error}"
+            ),
+            ephemeral=True,
+        )
+
+
+class ReferenceBookActionView(discord.ui.View):
+    def __init__(self, filename: str) -> None:
+        super().__init__(timeout=180)
+        self.filename = filename
+
+    async def _check_staff(
+        self,
+        interaction: discord.Interaction,
+    ) -> bool:
+        return (
+            isinstance(interaction.user, discord.Member)
+            and is_staff(interaction.user)
+        )
+
+    @discord.ui.button(
+        label="Enable",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+    )
+    async def enable(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not await self._check_staff(interaction):
+            await interaction.response.send_message(
+                "Only Moderator and EMC Faculty can manage daily reference books.",
+                ephemeral=True,
+            )
+            return
+
+        ok, error = set_reference_book_config(
+            self.filename,
+            enabled=True,
+        )
+
+        await interaction.response.edit_message(
+            content=(
+                f"✅ `{self.filename}` is now **enabled** for Daily Knowledge."
+                if ok
+                else f"❌ {error}"
+            ),
+            view=None,
+        )
+
+    @discord.ui.button(
+        label="Disable",
+        style=discord.ButtonStyle.secondary,
+        emoji="⏸️",
+    )
+    async def disable(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not await self._check_staff(interaction):
+            await interaction.response.send_message(
+                "Only Moderator and EMC Faculty can manage daily reference books.",
+                ephemeral=True,
+            )
+            return
+
+        ok, error = set_reference_book_config(
+            self.filename,
+            enabled=False,
+        )
+
+        await interaction.response.edit_message(
+            content=(
+                f"⏸️ `{self.filename}` is now **disabled** for Daily Knowledge."
+                if ok
+                else f"❌ {error}"
+            ),
+            view=None,
+        )
+
+    @discord.ui.button(
+        label="Set Weight",
+        style=discord.ButtonStyle.primary,
+        emoji="⚖️",
+    )
+    async def set_weight(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not await self._check_staff(interaction):
+            await interaction.response.send_message(
+                "Only Moderator and EMC Faculty can manage daily reference books.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_modal(
+            ReferenceBookWeightModal(self.filename)
+        )
+
+
+class ReferenceBookSelect(discord.ui.Select):
+    def __init__(self) -> None:
+        books = reference_book_documents()
+        options: list[discord.SelectOption] = []
+
+        for path in books[:25]:
+            entry = document_metadata(path.name)
+            title = reference_book_title(path.name)
+            enabled = "ON" if entry.get("daily_source_enabled") else "OFF"
+            weight = reference_book_weight(path.name)
+
+            options.append(
+                discord.SelectOption(
+                    label=title[:100],
+                    description=f"{enabled} • weight {weight} • {path.name}"[:100],
+                    value=path.name,
+                )
+            )
+
+        if not options:
+            options = [
+                discord.SelectOption(
+                    label="No reference books",
+                    description="Use /knowledge_book_add to add one.",
+                    value="__none__",
+                )
+            ]
+
+        super().__init__(
+            placeholder="Select a reference book...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            disabled=not books,
+        )
+
+    async def callback(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        filename = self.values[0]
+
+        if filename == "__none__":
+            await interaction.response.send_message(
+                "No reference books are registered yet. Use `/knowledge_book_add`.",
+                ephemeral=True,
+            )
+            return
+
+        entry = document_metadata(filename)
+
+        await interaction.response.send_message(
+            (
+                "📚 **Daily Reference Book**\n\n"
+                f"**File:** `{filename}`\n"
+                f"**Title:** {reference_book_title(filename)}\n"
+                f"**Daily Knowledge:** "
+                f"{'✅ Enabled' if entry.get('daily_source_enabled') else '⏸️ Disabled'}\n"
+                f"**Weight:** {reference_book_weight(filename)}\n\n"
+                "Choose an action:"
+            ),
+            view=ReferenceBookActionView(filename),
+            ephemeral=True,
+        )
+
+
+class ReferenceBookManagerView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=300)
+        self.add_item(ReferenceBookSelect())
+
+
 class GenericKnowledgeActionView(discord.ui.View):
     def __init__(
         self,
@@ -2445,8 +2720,66 @@ class KnowledgeDeleteSelect(discord.ui.Select):
 class KnowledgePanelView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=300)
+
         if knowledge_documents():
             self.add_item(KnowledgeDeleteSelect())
+
+    @discord.ui.button(
+        label="Daily Reference Books",
+        style=discord.ButtonStyle.primary,
+        emoji="📚",
+        row=1,
+    )
+    async def daily_reference_books(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not isinstance(interaction.user, discord.Member) or not is_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only Moderator and EMC Faculty can manage daily reference books.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            (
+                "📚 **Daily Reference Books**\n\n"
+                "Use the selector below to manage uploaded book JSON files.\n"
+                "You can enable/disable a book and change its selection weight.\n\n"
+                "**Higher weight = more likely to be selected.**"
+            ),
+            view=ReferenceBookManagerView(),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="Add Reference Book",
+        style=discord.ButtonStyle.success,
+        emoji="➕",
+        row=1,
+    )
+    async def add_reference_book(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        if not isinstance(interaction.user, discord.Member) or not is_staff(interaction.user):
+            await interaction.response.send_message(
+                "Only Moderator and EMC Faculty can add reference books.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            (
+                "📚 **Add a Reference Book**\n\n"
+                "Use `/knowledge_book_add` and attach the structured `.json` book file.\n\n"
+                "EM Bot will register the book automatically. You do not need to edit "
+                "`sources.json` or another configuration file manually."
+            ),
+            ephemeral=True,
+        )
 
     @staticmethod
     def panel_text() -> str:
@@ -2455,7 +2788,8 @@ class KnowledgePanelView(discord.ui.View):
             return (
                 "📚 **EM Bot Knowledge Manager**\n\n"
                 "**No documents are stored yet.**\n\n"
-                "Use `/knowledge_add` to upload a PDF or CSV.\n"
+                "Use `/knowledge_add` to upload a PDF, CSV, or JSON.\n"
+                "Use **Add Reference Book** for daily reference books.\n"
                 "Use `/knowledge_export` to create a backup.\n"
                 "Use `/knowledge_import` to restore a backup."
             )
@@ -2475,6 +2809,7 @@ class KnowledgePanelView(discord.ui.View):
             f"{lines}{extra}\n\n"
             "Select a document below to delete it."
         )
+
 
 
 
@@ -3351,6 +3686,138 @@ class Knowledge(commands.Cog):
                 f"1. The backup restore failed.\n\n2. `{error}`",
                 ephemeral=True,
             )
+
+
+    @app_commands.command(
+        name="knowledge_book_add",
+        description="Staff: upload a structured reference-book JSON for Daily Knowledge.",
+    )
+    @app_commands.describe(
+        attachment="Structured JSON book file",
+        weight="Daily selection weight from 1 to 100",
+    )
+    async def knowledge_book_add(
+        self,
+        interaction: discord.Interaction,
+        attachment: discord.Attachment,
+        weight: app_commands.Range[int, 1, 100] = 25,
+    ) -> None:
+        member = interaction.user
+
+        if not isinstance(member, discord.Member) or not is_staff(member):
+            await interaction.response.send_message(
+                "Only Moderator and EMC Faculty can add reference books.",
+                ephemeral=True,
+            )
+            return
+
+        if not attachment.filename.casefold().endswith(".json"):
+            await interaction.response.send_message(
+                "Reference books must be uploaded as structured `.json` files.",
+                ephemeral=True,
+            )
+            return
+
+        if attachment.size > MAX_FILE_BYTES:
+            await interaction.response.send_message(
+                f"File is too large. Maximum is {MAX_FILE_BYTES // (1024 * 1024)} MB.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            data = await attachment.read()
+            parsed = json.loads(data.decode("utf-8-sig"))
+
+            if not isinstance(parsed, dict):
+                raise ValueError("The JSON root must be an object.")
+
+            if not any(
+                key in parsed
+                for key in ("topics", "chapters", "sections")
+            ):
+                raise ValueError(
+                    "The JSON does not look like a structured reference book. "
+                    "Expected `topics`, `chapters`, or `sections`."
+                )
+
+            filename = Path(attachment.filename).name
+            source_path = SOURCE_DIR / filename
+            source_path.write_bytes(data)
+
+            manifest = load_manifest()
+            digest = sha256(data)
+            title = reference_book_title(
+                filename,
+                parsed,
+            )
+
+            manifest[filename] = {
+                "sha256": digest,
+                "cache": cache_path_for(
+                    filename,
+                    draft=False,
+                ).name,
+                "provider": "local-json",
+                "status": "verified",
+                "source_type": "json",
+                "category": REFERENCE_BOOK_CATEGORY,
+                "scope": "daily-knowledge",
+                "title": title,
+                "daily_source_enabled": True,
+                "daily_source_weight": int(weight),
+            }
+            save_manifest(manifest)
+
+            cache_path = cache_path_for(
+                filename,
+                draft=False,
+            )
+            cache_path.write_text(
+                f"# SOURCE_DOCUMENT: {filename}\n"
+                f"# SOURCE_SHA256: {digest}\n"
+                "# EXTRACTION_PROVIDER: local-json\n"
+                "# STATUS: VERIFIED\n"
+                "# AUTHORITY: REFERENCE_BOOK\n\n"
+                + json.dumps(
+                    parsed,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            await interaction.followup.send(
+                (
+                    "📚 **Reference Book Added**\n\n"
+                    f"**Title:** {title}\n"
+                    f"**File:** `{filename}`\n"
+                    "**Status:** ✅ Verified reference\n"
+                    "**Daily Knowledge:** ✅ Enabled\n"
+                    f"**Selection weight:** **{weight}**\n\n"
+                    "Open `/knowledge` → **Daily Reference Books** to manage it."
+                ),
+                ephemeral=True,
+            )
+
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            await interaction.followup.send(
+                f"❌ The reference book could not be added.\n\n{error}",
+                ephemeral=True,
+            )
+        except OSError as error:
+            await interaction.followup.send(
+                f"❌ The reference book could not be saved.\n\n`{error}`",
+                ephemeral=True,
+            )
+
 
     @app_commands.command(name="knowledge_list", description="Staff: list knowledge documents.")
     async def knowledge_list(self, interaction: discord.Interaction) -> None:

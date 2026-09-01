@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "description": "Pre-generated, source-backed Daily Knowledge items. Scheduled offline posts do not call an AI provider.",
+  "sources": [
+    {
+      "id": "animation-book",
+      "title": "Approved Animation Reference",
+      "weight": 20,
+      "items": [
+        {
+          "id": "animation-001",
+          "topic": "Animation",
+          "fact": "Replace this with a verified factual statement from your approved source.",
+          "explanation": "Write a short beginner-friendly explanation that stays faithful to the source.",
+          "source": "Approved Animation Reference, page 1"
+        }
+      ]
+    }
+  ]
+}

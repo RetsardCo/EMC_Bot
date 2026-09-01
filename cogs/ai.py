@@ -62,6 +62,33 @@ OPENROUTER_FAST_MODEL = os.getenv(
     "openai/gpt-oss-20b:free",
 ).strip()
 
+OPENROUTER_AUTO_DISCOVERY = os.getenv(
+    "OPENROUTER_AUTO_DISCOVERY",
+    "true",
+).casefold() in {"1", "true", "yes", "on"}
+
+OPENROUTER_AUTO_REFRESH_SECONDS = max(
+    300,
+    int(
+        os.getenv(
+            "OPENROUTER_AUTO_REFRESH_SECONDS",
+            "21600",
+        )
+    ),
+)
+
+OPENROUTER_FREE_CODING_FALLBACK = os.getenv(
+    "OPENROUTER_FREE_CODING_FALLBACK",
+    "openrouter/free",
+).strip()
+
+OPENROUTER_MODEL_CACHE_FILE = Path(
+    os.getenv(
+        "OPENROUTER_MODEL_CACHE_FILE",
+        "data/openrouter_model_cache.json",
+    )
+)
+
 OPENROUTER_LIGHTNING_MODEL = os.getenv(
     "OPENROUTER_LIGHTNING_MODEL",
     "nvidia/nemotron-3.5-lightning:free",
@@ -254,6 +281,16 @@ provider_stats: dict[str, dict[str, int | str]] = defaultdict(
 )
 
 route_counts: dict[str, int] = defaultdict(int)
+
+provider_cooldowns: dict[str, float] = {}
+provider_cooldown_reasons: dict[str, str] = {}
+
+# Cached OpenRouter dynamic model selection.
+openrouter_model_cache: dict[str, object] = {
+    "coding_model": "",
+    "updated_at": 0.0,
+    "reason": "",
+}
 
 # Only one image-analysis request may actively hold image bytes at a time.
 vision_semaphore = asyncio.Semaphore(1)
@@ -1008,6 +1045,102 @@ def call_openrouter_sync(
     return answer
 
 
+
+def call_puter_sync(
+    auth_token: str,
+    base_url: str,
+    model: str,
+    messages: list[dict],
+) -> str:
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=json.dumps(
+            {
+                "model": model,
+                "messages": messages,
+                "max_tokens": AI_MAX_OUTPUT_TOKENS,
+                "temperature": 0.2,
+            }
+        ).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {auth_token}",
+            "User-Agent": "EM-Bot/1.0",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=45,
+        ) as response:
+            data = json.loads(
+                response.read().decode("utf-8")
+            )
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        try:
+            detail = json.loads(body).get(
+                "error",
+                {},
+            ).get(
+                "message",
+                body,
+            )
+        except json.JSONDecodeError:
+            detail = body
+        raise RuntimeError(
+            f"Puter HTTP {error.code}: {detail}"
+        ) from error
+    except urllib.error.URLError as error:
+        raise RuntimeError(
+            f"Puter network error: {error}"
+        ) from error
+
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            "Puter returned a non-object JSON response."
+        )
+
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError(
+            "Puter returned no choices."
+        )
+
+    first = choices[0]
+    if not isinstance(first, dict):
+        raise RuntimeError(
+            "Puter returned a malformed choice."
+        )
+
+    message = first.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError(
+            "Puter returned a malformed message."
+        )
+
+    content = message.get("content", "")
+    if isinstance(content, str):
+        result = content.strip()
+    elif isinstance(content, list):
+        result = "".join(
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict)
+        ).strip()
+    else:
+        result = ""
+
+    if not result:
+        raise RuntimeError(
+            "Puter returned no text."
+        )
+
+    return result
+
+
 def call_mistral_sync(
     api_key: str,
     model: str,
@@ -1223,6 +1356,359 @@ def split_for_discord(
 # STATUS
 # ============================================================
 
+
+def provider_in_cooldown(provider: str) -> bool:
+    until = provider_cooldowns.get(provider, 0.0)
+    if until <= time.monotonic():
+        provider_cooldowns.pop(provider, None)
+        provider_cooldown_reasons.pop(provider, None)
+        return False
+    return True
+
+
+def cooldown_remaining(provider: str) -> int:
+    return max(
+        0,
+        int(
+            provider_cooldowns.get(provider, 0.0)
+            - time.monotonic()
+        ),
+    )
+
+
+def classify_cooldown(error: Exception) -> tuple[int, str] | None:
+    message = str(error).casefold()
+
+    if any(
+        token in message
+        for token in (
+            "http 429",
+            "quota exceeded",
+            "rate limit",
+            "rate-limit",
+            "too many requests",
+        )
+    ):
+        return 60, "rate limited / quota exceeded"
+
+    if any(
+        token in message
+        for token in (
+            "http 401",
+            "http 403",
+            "http 404",
+            "unauthorized",
+            "forbidden",
+            "not found",
+            "unavailable for free",
+            "invalid model",
+        )
+    ):
+        return 3600, "provider/model configuration error"
+
+    if any(
+        token in message
+        for token in (
+            "timeout",
+            "timed out",
+            "network error",
+            "connection reset",
+            "bad gateway",
+            "service unavailable",
+            "http 500",
+            "http 502",
+            "http 503",
+            "http 504",
+        )
+    ):
+        return 60, "temporary provider/network failure"
+
+    return None
+
+
+def set_cooldown(
+    provider: str,
+    seconds: int,
+    reason: str,
+) -> None:
+    provider_cooldowns[provider] = time.monotonic() + seconds
+    provider_cooldown_reasons[provider] = reason
+
+
+def _load_openrouter_model_cache() -> None:
+    try:
+        if OPENROUTER_MODEL_CACHE_FILE.exists():
+            data = json.loads(
+                OPENROUTER_MODEL_CACHE_FILE.read_text(
+                    encoding="utf-8"
+                )
+            )
+            if isinstance(data, dict):
+                openrouter_model_cache.update(data)
+    except (OSError, json.JSONDecodeError):
+        logger.warning(
+            "Could not load OpenRouter model cache."
+        )
+
+
+def _save_openrouter_model_cache() -> None:
+    try:
+        OPENROUTER_MODEL_CACHE_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        temporary = OPENROUTER_MODEL_CACHE_FILE.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                openrouter_model_cache,
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        temporary.replace(
+            OPENROUTER_MODEL_CACHE_FILE
+        )
+    except OSError:
+        logger.warning(
+            "Could not save OpenRouter model cache."
+        )
+
+
+def _free_model(model: dict) -> bool:
+    pricing = model.get("pricing")
+    if not isinstance(pricing, dict):
+        return False
+
+    try:
+        return (
+            float(pricing.get("prompt", 1)) == 0.0
+            and float(pricing.get("completion", 1)) == 0.0
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _coding_capable(model: dict) -> bool:
+    combined = " ".join(
+        str(
+            model.get(
+                key,
+                "",
+            )
+        )
+        for key in (
+            "id",
+            "name",
+            "description",
+        )
+    ).casefold()
+
+    signals = (
+        "coder",
+        "coding",
+        "programming",
+        "software engineer",
+        "software engineering",
+        "developer",
+        "agentic",
+        "code generation",
+    )
+    return any(signal in combined for signal in signals)
+
+
+def _text_capable(model: dict) -> bool:
+    architecture = model.get("architecture")
+    if not isinstance(architecture, dict):
+        return True
+
+    inputs = architecture.get("input_modalities")
+    if isinstance(inputs, list) and inputs:
+        return "text" in {
+            str(value).casefold()
+            for value in inputs
+        }
+
+    return True
+
+
+def _context_length(model: dict) -> int:
+    try:
+        return int(
+            model.get(
+                "context_length",
+                0,
+            )
+        )
+    except (TypeError, ValueError):
+        return 0
+
+
+def _coding_score(model: dict) -> tuple[int, int, str]:
+    text = " ".join(
+        str(model.get(key, ""))
+        for key in (
+            "id",
+            "name",
+            "description",
+        )
+    ).casefold()
+
+    score = 0
+
+    for signal, points in (
+        ("coder", 50),
+        ("coding", 45),
+        ("programming", 35),
+        ("software engineering", 35),
+        ("developer", 30),
+        ("agentic", 20),
+        ("code generation", 20),
+        ("tool use", 10),
+        ("reasoning", 10),
+    ):
+        if signal in text:
+            score += points
+
+    context = _context_length(model)
+    score += min(40, context // 25_000)
+
+    return (
+        score,
+        context,
+        str(model.get("id", "")),
+    )
+
+
+def discover_openrouter_free_coding_model_sync(
+    api_key: str,
+) -> Optional[str]:
+    request = urllib.request.Request(
+        "https://openrouter.ai/api/v1/models",
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "X-Title": OPENROUTER_SITE_NAME,
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=30,
+        ) as response:
+            data = json.loads(
+                response.read().decode("utf-8")
+            )
+    except urllib.error.HTTPError as error:
+        body = error.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+        raise RuntimeError(
+            f"OpenRouter model catalog HTTP {error.code}: {body}"
+        ) from error
+    except urllib.error.URLError as error:
+        raise RuntimeError(
+            f"OpenRouter model catalog network error: {error}"
+        ) from error
+
+    if not isinstance(data, dict):
+        return None
+
+    models = data.get("data", [])
+    if not isinstance(models, list):
+        return None
+
+    candidates = [
+        model
+        for model in models
+        if isinstance(model, dict)
+        and _free_model(model)
+        and _text_capable(model)
+        and _context_length(model) >= 16_000
+        and _coding_capable(model)
+    ]
+
+    if not candidates:
+        return None
+
+    candidates.sort(
+        key=_coding_score,
+        reverse=True,
+    )
+
+    model_id = str(
+        candidates[0].get(
+            "id",
+            "",
+        )
+    ).strip()
+
+    return model_id or None
+
+
+def get_openrouter_coding_model() -> str:
+    _load_openrouter_model_cache()
+
+    cached = str(
+        openrouter_model_cache.get(
+            "coding_model",
+            "",
+        )
+    ).strip()
+
+    if not OPENROUTER_API_KEY:
+        return cached or OPENROUTER_CODING_MODEL
+
+    now = time.time()
+    try:
+        updated_at = float(
+            openrouter_model_cache.get(
+                "updated_at",
+                0.0,
+            )
+        )
+    except (TypeError, ValueError):
+        updated_at = 0.0
+
+    if (
+        cached
+        and now - updated_at < OPENROUTER_AUTO_REFRESH_SECONDS
+    ):
+        return cached
+
+    if not OPENROUTER_AUTO_DISCOVERY:
+        return cached or OPENROUTER_CODING_MODEL
+
+    try:
+        discovered = discover_openrouter_free_coding_model_sync(
+            OPENROUTER_API_KEY
+        )
+        if discovered:
+            openrouter_model_cache.update(
+                {
+                    "coding_model": discovered,
+                    "updated_at": now,
+                    "reason": "automatic free coding model discovery",
+                }
+            )
+            _save_openrouter_model_cache()
+            logger.info(
+                "OpenRouter auto-selected free coding model: %s",
+                discovered,
+            )
+            return discovered
+    except Exception as error:
+        logger.warning(
+            "OpenRouter automatic coding discovery failed: %s",
+            error,
+        )
+
+    return cached or OPENROUTER_CODING_MODEL
+
+
 def record_attempt(
     provider: str,
 ) -> None:
@@ -1319,6 +1805,12 @@ def build_status_embed() -> discord.Embed:
             "mistral",
             MISTRAL_API_KEY,
             MISTRAL_MODEL,
+        ),
+        (
+            "Puter",
+            "puter",
+            PUTER_AUTH_TOKEN,
+            PUTER_MODEL,
         ),
     )
 
@@ -1446,6 +1938,8 @@ class AI(commands.Cog):
             return None
 
         provider = "gemini"
+        if provider_in_cooldown(provider):
+            return None
         record_attempt(provider)
 
         try:
@@ -1467,16 +1961,11 @@ class AI(commands.Cog):
             return answer
 
         except Exception as error:
-            record_failure(
-                provider,
-                error,
-            )
-
-            logger.warning(
-                "Gemini failed: %s",
-                error,
-            )
-
+            record_failure(provider, error)
+            cooldown = classify_cooldown(error)
+            if cooldown:
+                set_cooldown(provider, cooldown[0], cooldown[1])
+            logger.warning("Gemini failed: %s", error)
             return None
 
     async def try_openrouter(
@@ -1492,6 +1981,9 @@ class AI(commands.Cog):
             not OPENROUTER_API_KEY
             or not model
         ):
+            return None
+
+        if provider_in_cooldown(provider_key):
             return None
 
         record_attempt(provider_key)
@@ -1515,18 +2007,69 @@ class AI(commands.Cog):
             return answer
 
         except Exception as error:
-            record_failure(
-                provider_key,
-                error,
-            )
-
+            record_failure(provider_key, error)
+            cooldown = classify_cooldown(error)
+            if cooldown:
+                set_cooldown(provider_key, cooldown[0], cooldown[1])
             logger.warning(
                 "OpenRouter %s failed: %s",
                 provider_key,
                 error,
             )
-
             return None
+
+
+    async def try_puter(
+        self,
+        user_id: int,
+        question: str,
+        sources: list[str],
+        image_data: Optional[dict],
+        *,
+        model: Optional[str] = None,
+        provider_key: str = "puter",
+    ) -> Optional[str]:
+        if not PUTER_AUTH_TOKEN:
+            return None
+
+        selected_model = (model or PUTER_MODEL).strip()
+        if not selected_model or provider_in_cooldown(provider_key):
+            return None
+
+        record_attempt(provider_key)
+
+        try:
+            messages = build_openrouter_messages(
+                user_id,
+                question,
+                sources,
+                image_data,
+            )
+            answer = await asyncio.to_thread(
+                call_puter_sync,
+                PUTER_AUTH_TOKEN,
+                PUTER_BASE_URL,
+                selected_model,
+                messages,
+            )
+            record_success(provider_key)
+            return answer
+        except Exception as error:
+            record_failure(provider_key, error)
+            cooldown = classify_cooldown(error)
+            if cooldown:
+                set_cooldown(
+                    provider_key,
+                    cooldown[0],
+                    cooldown[1],
+                )
+            logger.warning(
+                "Puter %s failed: %s",
+                provider_key,
+                error,
+            )
+            return None
+
 
     async def try_mistral(
         self,
@@ -1538,6 +2081,8 @@ class AI(commands.Cog):
             return None
 
         provider = "mistral"
+        if provider_in_cooldown(provider):
+            return None
         record_attempt(provider)
 
         try:
@@ -1559,16 +2104,14 @@ class AI(commands.Cog):
             return answer
 
         except Exception as error:
-            record_failure(
-                provider,
-                error,
-            )
-
+            record_failure(provider, error)
+            cooldown = classify_cooldown(error)
+            if cooldown:
+                set_cooldown(provider, cooldown[0], cooldown[1])
             logger.warning(
                 "Mistral failed: %s",
                 error,
             )
-
             return None
 
     @app_commands.command(
@@ -1596,6 +2139,7 @@ class AI(commands.Cog):
             GEMINI_API_KEY
             or OPENROUTER_API_KEY
             or MISTRAL_API_KEY
+            or PUTER_AUTH_TOKEN
         ):
             await interaction.response.send_message(
                 "1. No AI provider is configured.\n\n"
@@ -1737,8 +2281,9 @@ class AI(commands.Cog):
         # ------------------------------------------------------
 
         elif route == "coding":
+            dynamic_coding_model = get_openrouter_coding_model()
             answer = await self.try_openrouter(
-                OPENROUTER_CODING_MODEL,
+                dynamic_coding_model,
                 "openrouter_coding",
                 interaction.user.id,
                 question,

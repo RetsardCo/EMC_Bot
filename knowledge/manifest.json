@@ -43,5 +43,12 @@
     "provider": "local-json",
     "status": "current",
     "source_type": "json"
+  },
+  "animators_survival_kit.json": {
+    "sha256": "0ee95c2c9c48f3fd3d3652b1ddfbb86ff0e06695514b14b87257e3ddd2249fb2",
+    "cache": "animators_survival_kit.md",
+    "provider": "local-json",
+    "status": "verified",
+    "source_type": "json"
   }
 }
